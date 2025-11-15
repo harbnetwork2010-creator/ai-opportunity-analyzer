@@ -745,7 +745,6 @@ with tab_overview:
     fig_status_count.update_traces(textposition="outside")
     st.plotly_chart(fig_status_count, use_container_width=True)
 
-
     with colB:
         if "Expected Value (SAR)" in df_pred.columns:
             st.markdown("**Total Expected Value by Status (SAR)**")
