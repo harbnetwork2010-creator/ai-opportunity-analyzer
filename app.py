@@ -718,40 +718,154 @@ tab_overview, tab_opps, tab_customers, tab_reg = st.tabs(
 
 # --- TAB 1: OVERVIEW ---
 with tab_overview:
-    st.subheader("Dataset Snapshot")
-    st.dataframe(df_pred.head(50))
+    st.subheader("Business Overview Dashboard")
 
-    st.subheader("Opportunity Status Distribution")
-    fig1 = px.histogram(
-        df_pred,
-        x="Status_Simplified",
-        color="Status_Simplified",
-        text_auto=True,
-    )
-    st.plotly_chart(fig1, use_container_width=True)
+    # ---------- Status & Value by Status ----------
+    colA, colB = st.columns(2)
 
+    with colA:
+        st.markdown("**Opportunities by Status (Count)**")
+        fig_status_count = px.bar(
+            df_pred["Status_Simplified"].value_counts().reset_index(),
+            x="index",
+            y="Status_Simplified",
+            labels={"index": "Status", "Status_Simplified": "Number of opportunities"},
+            text="Status_Simplified",
+        )
+        fig_status_count.update_traces(textposition="outside")
+        st.plotly_chart(fig_status_count, use_container_width=True)
+
+    with colB:
+        if "Expected Value (SAR)" in df_pred.columns:
+            st.markdown("**Total Expected Value by Status (SAR)**")
+            status_value = (
+                df_pred.groupby("Status_Simplified")["Expected Value (SAR)"]
+                .sum()
+                .reset_index()
+            )
+            fig_status_value = px.bar(
+                status_value,
+                x="Status_Simplified",
+                y="Expected Value (SAR)",
+                labels={
+                    "Status_Simplified": "Status",
+                    "Expected Value (SAR)": "Total expected value (SAR)",
+                },
+                text="Expected Value (SAR)",
+            )
+            fig_status_value.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+            st.plotly_chart(fig_status_value, use_container_width=True)
+
+    # Short textual insight
     if "Expected Value (SAR)" in df_pred.columns:
-        st.subheader("Expected Value Distribution (SAR)")
-        fig2 = px.histogram(
-            df_pred,
-            x="Expected Value (SAR)",
-            nbins=40,
+        total_expected = df_pred["Expected Value (SAR)"].sum()
+        median_expected = df_pred["Expected Value (SAR)"].median()
+        st.markdown(
+            f"- **Total expected pipeline**: **{total_expected:,.0f} SAR**  \n"
+            f"- **Median deal size**: **{median_expected:,.0f} SAR**  \n"
+            f"- The charts above show **how many deals** you have per status and "
+            f"**where most of your expected revenue is concentrated**."
         )
-        st.plotly_chart(fig2, use_container_width=True)
 
-    if "Final Contract Value (SAR)" in df_pred.columns:
-        st.subheader("Final Contract Value Distribution (SAR)")
-        fig3 = px.histogram(
-            df_pred,
-            x="Final Contract Value (SAR)",
-            nbins=40,
+    st.markdown("---")
+
+    # ---------- Value Distributions ----------
+    st.markdown("### Opportunity Value Distributions")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if "Expected Value (SAR)" in df_pred.columns:
+            st.markdown("**Expected Value (SAR)**")
+            fig_ev = px.histogram(
+                df_pred,
+                x="Expected Value (SAR)",
+                nbins=30,
+                labels={
+                    "Expected Value (SAR)": "Expected value range (SAR)",
+                    "count": "Number of opportunities",
+                },
+            )
+            st.plotly_chart(fig_ev, use_container_width=True)
+            st.caption(
+                "Each bar shows how many opportunities fall into a given value range. "
+                "Tall bars on the left = many small deals; tall bars on the right = more large deals."
+            )
+
+    with col2:
+        if "Final Contract Value (SAR)" in df_pred.columns:
+            st.markdown("**Final Contract Value (SAR)**")
+            fig_fv = px.histogram(
+                df_pred,
+                x="Final Contract Value (SAR)",
+                nbins=30,
+                labels={
+                    "Final Contract Value (SAR)": "Final contract value range (SAR)",
+                    "count": "Number of closed deals",
+                },
+            )
+            st.plotly_chart(fig_fv, use_container_width=True)
+            st.caption(
+                "This shows the actual sizes of closed deals. Comparing this with the expected value "
+                "helps you see if estimates are usually too high or too low."
+            )
+
+    st.markdown("---")
+
+    # ---------- Top Customers by Expected Pipeline ----------
+    st.markdown("### Top Customers by Expected Pipeline Revenue")
+
+    if not customer_kpis.empty:
+        top_cust = customer_kpis.sort_values(
+            by="Pipeline_Expected_Revenue_SAR", ascending=False
+        ).head(10)
+
+        fig_cust = px.bar(
+            top_cust,
+            x="Customer Name",
+            y="Pipeline_Expected_Revenue_SAR",
+            labels={
+                "Customer Name": "Customer",
+                "Pipeline_Expected_Revenue_SAR": "Expected pipeline revenue (SAR)",
+            },
+            text="Pipeline_Expected_Revenue_SAR",
         )
-        st.plotly_chart(fig3, use_container_width=True)
+        fig_cust.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+        st.plotly_chart(fig_cust, use_container_width=True)
+        st.caption(
+            "These are the customers where the **future opportunity pipeline is strongest** "
+            "based on predicted values and win probabilities."
+        )
+    else:
+        st.info("Customer KPIs were not computed (no customer data).")
 
-    st.subheader("Gaps Detected")
+    st.markdown("---")
+
+    # ---------- Gaps Detected ----------
+    st.markdown("### Opportunities with Detected Business Gaps")
+
     gap_count = df_pred["Gap_Flag"].sum()
     st.write(f"Number of opportunities with detected gaps: **{int(gap_count)}**")
-    st.dataframe(df_pred[df_pred["Gap_Flag"] == 1].head(50))
+
+    with st.expander("Show opportunities with gaps (table)"):
+        st.dataframe(
+            df_pred[df_pred["Gap_Flag"] == 1][
+                [
+                    "Opportunity ID",
+                    "Opportunity Name",
+                    "Customer Name",
+                    "Status_Simplified",
+                    "Expected Value (SAR)",
+                    "days_to_deadline",
+                    "days_since_last_update",
+                    "Gap_Reason",
+                ]
+            ]
+        )
+
+    with st.expander("Show raw dataset (first 200 rows)"):
+        st.dataframe(df_pred.head(200))
+
 
 
 # --- TAB 2: OPPORTUNITIES AI ---
