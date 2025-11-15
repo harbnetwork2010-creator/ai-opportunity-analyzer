@@ -724,26 +724,26 @@ with tab_overview:
     colA, colB = st.columns(2)
 
     with colA:
-    st.markdown("**Opportunities by Status (Count)**")
+        st.markdown("**Opportunities by Status (Count)**")
 
-    # Build a clean dataframe: Status + Count
-    status_counts = (
-        df_pred["Status_Simplified"]
-        .fillna("Unknown")
-        .value_counts()
-        .rename_axis("Status")
-        .reset_index(name="Count")
-    )
+        # Build a clean dataframe: Status + Count
+        status_counts = (
+            df_pred["Status_Simplified"]
+            .fillna("Unknown")
+            .value_counts()
+            .rename_axis("Status")
+            .reset_index(name="Count")
+        )
 
-    fig_status_count = px.bar(
-        status_counts,
-        x="Status",
-        y="Count",
-        labels={"Status": "Status", "Count": "Number of opportunities"},
-        text="Count",
-    )
-    fig_status_count.update_traces(textposition="outside")
-    st.plotly_chart(fig_status_count, use_container_width=True)
+        fig_status_count = px.bar(
+            status_counts,
+            x="Status",
+            y="Count",
+            labels={"Status": "Status", "Count": "Number of opportunities"},
+            text="Count",
+        )
+        fig_status_count.update_traces(textposition="outside")
+        st.plotly_chart(fig_status_count, use_container_width=True)
 
     with colB:
         if "Expected Value (SAR)" in df_pred.columns:
