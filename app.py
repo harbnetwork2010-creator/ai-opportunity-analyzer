@@ -600,7 +600,7 @@ def run_full_analysis(uploaded_bytes, filename):
             from sklearn.metrics import mean_squared_error, r2_score
 
             y_pred_r = reg_pipeline.predict(X_test_r)
-            rmse = mean_squared_error(y_test_r, y_pred_r, squared=False)
+            rmse = np.sqrt(mean_squared_error(y_test_r, y_pred_r))
             r2 = r2_score(y_test_r, y_pred_r)
         else:
             rmse = np.nan
