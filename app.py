@@ -66,7 +66,7 @@ def categorize_gap(reason):
 
 EXPECTED_COLUMNS = [...]
 REGULATORY_KEYWORDS = {...}
-(KEEP YOUR ORIGINAL ITEMS – do not remove)
+(KEEP YOUR ORIGINAL ITEMS do not remove)
 
 
 
