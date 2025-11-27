@@ -1161,47 +1161,126 @@ with tabs[2]:
 # TAB 4 – REGULATORY VIEW
 # ---------------------------------------------------------
 with tabs[3]:
-    st.subheader("Regulatory Drivers Across Opportunities")
+    st.markdown("## ⚖ Regulatory Intelligence Dashboard")
+    st.markdown("Gain insights into regulator influence, trends, and security control demand.")
+
+    # --- BASE REGULATOR COUNT TABLE ---
+    reg_count_df = (
+        df_processed.explode("Regulatory_Drivers")["Regulatory_Drivers"]
+        .value_counts()
+        .reset_index()
+        .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
+    )
+
+    # --- BUILD MONTHLY TREND DATA ---
+    df_month = df_processed.copy()
+    df_month["Month"] = df_month["Last Updated Date"].dt.to_period("M").astype(str)
+
+    reg_month_df = (
+        df_month.explode("Regulatory_Drivers")
+        .groupby(["Month", "Regulatory_Drivers"])
+        .size()
+        .reset_index(name="Count")
+        .rename(columns={"Regulatory_Drivers": "Regulator"})
+    )
+    # ========= PIE CHART: Regulator Share =========
+    st.subheader("📊 Regulator Share Distribution")
 
     try:
-        reg_count_df = (
-            df_processed.explode("Regulatory_Drivers")["Regulatory_Drivers"]
+        fig_reg_pie = px.pie(
+            reg_count_df,
+            names="Regulator",
+            values="Count",
+            title="Regulator Influence Share",
+            hole=0.45,
+            color_discrete_sequence=px.colors.qualitative.Set2
+        )
+        fig_reg_pie.update_traces(textposition="inside", textinfo="percent+label")
+        st.plotly_chart(fig_reg_pie, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Could not draw regulator share pie chart: {e}")
+
+    # ========= LINE CHART: Regulator Trend Over Time =========
+    st.subheader("📈 Regulator Trend Timeline")
+
+    try:
+        fig_reg_trend = px.line(
+            reg_month_df,
+            x="Month",
+            y="Count",
+            color="Regulator",
+            markers=True,
+            title="Regulatory Influence Trend Over Time",
+            color_discrete_sequence=px.colors.qualitative.Set1
+        )
+        fig_reg_trend.update_layout(xaxis=dict(type="category"))
+        st.plotly_chart(fig_reg_trend, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Could not draw regulator trend timeline: {e}")
+
+    # ========= REGULATORY KEYWORD CLOUD =========
+    st.subheader("🔍 Most Frequent Regulatory Keywords")
+
+    try:
+        all_keys = []
+        for items in df_processed["Regulatory_Drivers"]:
+            if isinstance(items, list):
+                all_keys.extend(items)
+
+        key_df = (
+            pd.Series(all_keys)
             .value_counts()
             .reset_index()
-            .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
+            .rename(columns={"index": "Keyword", 0: "Frequency"})
         )
 
-        # Ensure correct column names
-        reg_count_df.columns = ["Regulator", "Count"]
-        
+        fig_key_cloud = px.bar(
+            key_df,
+            x="Keyword",
+            y="Frequency",
+            title="Regulatory Keyword Cloud",
+            text="Frequency",
+        )
+        fig_key_cloud.update_traces(textposition="outside")
+        fig_key_cloud.update_layout(xaxis_tickangle=-45)
+        st.plotly_chart(fig_key_cloud, use_container_width=True)
+
     except Exception as e:
-        st.error(f"Error computing regulatory counts: {e}")
-        reg_count_df = pd.DataFrame(columns=["Regulator", "Count"])
+        st.error(f"Could not draw keyword cloud: {e}")
 
-    if debug_mode:
-        st.write("DEBUG – reg_count_df:", reg_count_df)
 
-    if reg_count_df.empty:
-        st.warning("No regulatory drivers detected in the dataset.")
-    else:
-        try:
-            fig_regs = px.bar(
-                reg_count_df,
-                x="Regulator",
-                y="Count",
-                title="Regulatory Keywords Identified",
-                text="Count",
-                color="Regulator",
-            )
-            fig_regs.update_traces(textposition="outside")
-            st.plotly_chart(fig_regs, use_container_width=True)
-        except Exception as e:
-            st.error(f"Could not draw regulatory bar chart: {e}")
+    # ========= HEATMAP: Regulator → Control Category =========
+    st.subheader("🔥 Regulatory Demand Heatmap")
+
+    try:
+        heat_data = []
+
+        for reg, categories in REGULATOR_CONTROLS.items():
+            for cat in categories:
+                heat_data.append([reg, cat, 1])
+
+        heat_df = pd.DataFrame(heat_data, columns=["Regulator", "Category", "Required"])
+
+        pivot_df = heat_df.pivot(index="Regulator", columns="Category", values="Required")
+
+        fig_heat = px.imshow(
+            pivot_df,
+            aspect="auto",
+            color_continuous_scale="Blues",
+            title="Regulator vs Control Category Demand Map",
+        )
+
+        st.plotly_chart(fig_heat, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Could not draw regulator heatmap: {e}")
 
 # ---------------------------------------------------------
 # TAB 5 – REGULATORY REVENUE FORECAST
 # ---------------------------------------------------------
-
+with tabs[4]:
     st.subheader("🔍 Detailed Regulatory View per Customer")
     
     selected_customer = st.selectbox(
