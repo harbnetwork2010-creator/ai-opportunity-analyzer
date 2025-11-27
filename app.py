@@ -20,6 +20,41 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
 
+
+# ------------------------------------------------------------
+# UNIVERSAL SAFE NUMERIC NORMALIZER
+# ------------------------------------------------------------
+def normalize_to_float(x, default=0.0):
+    """
+    Convert ANY strange value into a usable float.
+    Handles:
+    - lists with 1 number → take first
+    - lists with many numbers → take mean
+    - strings → convert if numeric
+    - None / NaN → default
+    - invalid → default
+    """
+    try:
+        # Handle lists/arrays
+        if isinstance(x, (list, tuple)):
+            if len(x) == 1:
+                return float(x[0])
+            elif len(x) > 1:
+                return float(sum(x) / len(x))   # take MEAN
+            else:
+                return default
+
+        # Handle empty strings
+        if x is None or x == "":
+            return default
+
+        # Try numeric conversion
+        return float(x)
+
+    except:
+        return default
+
+
 # =========================================================
 # STREAMLIT PAGE CONFIG & GLOBAL SETTINGS
 # =========================================================
