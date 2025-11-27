@@ -1161,121 +1161,98 @@ with tabs[2]:
 # TAB 4 – REGULATORY VIEW
 # ---------------------------------------------------------
 with tabs[3]:
-    st.markdown("## ⚖ Regulatory Intelligence Dashboard")
-    st.markdown("Gain insights into regulator influence, trends, and security control demand.")
+    st.header("⚖ Regulatory View")
 
-    # --- BASE REGULATOR COUNT TABLE ---
-    reg_count_df = (
-        df_processed.explode("Regulatory_Drivers")["Regulatory_Drivers"]
-        .value_counts()
-        .reset_index()
-        .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
-    )
-
-    # --- BUILD MONTHLY TREND DATA ---
-    df_month = df_processed.copy()
-    df_month["Month"] = df_month["Last Updated Date"].dt.to_period("M").astype(str)
-
-    reg_month_df = (
-        df_month.explode("Regulatory_Drivers")
-        .groupby(["Month", "Regulatory_Drivers"])
-        .size()
-        .reset_index(name="Count")
-        .rename(columns={"Regulatory_Drivers": "Regulator"})
-    )
-    # ========= PIE CHART: Regulator Share =========
+    # ============================================================
+    # 1️⃣ REGULATORY SHARE DISTRIBUTION
+    # ============================================================
     st.subheader("📊 Regulator Share Distribution")
 
     try:
-        fig_reg_pie = px.pie(
-            reg_count_df,
+        reg_share_df = (
+            df_processed
+            .explode("Regulatory_Drivers")["Regulatory_Drivers"]
+            .value_counts()
+            .reset_index()
+            .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
+        )
+
+        fig_pie = px.pie(
+            reg_share_df,
             names="Regulator",
             values="Count",
-            title="Regulator Influence Share",
-            hole=0.45,
-            color_discrete_sequence=px.colors.qualitative.Set2
+            title="Distribution of Regulatory Drivers"
         )
-        fig_reg_pie.update_traces(textposition="inside", textinfo="percent+label")
-        st.plotly_chart(fig_reg_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, use_container_width=True)
 
     except Exception as e:
         st.error(f"Could not draw regulator share pie chart: {e}")
 
-    # ========= LINE CHART: Regulator Trend Over Time =========
-    st.subheader("📈 Regulator Trend Timeline")
+    # ============================================================
+    # 2️⃣ REGULATOR OCCURRENCE BAR CHART
+    # ============================================================
+    st.subheader("📈 Regulatory Driver Frequency")
 
     try:
-        fig_reg_trend = px.line(
-            reg_month_df,
-            x="Month",
+        reg_bar_df = reg_share_df.copy()
+
+        fig_reg_bar = px.bar(
+            reg_bar_df,
+            x="Regulator",
             y="Count",
-            color="Regulator",
-            markers=True,
-            title="Regulatory Influence Trend Over Time",
-            color_discrete_sequence=px.colors.qualitative.Set1
+            title="Regulator Appearance Frequency",
+            text="Count"
         )
-        fig_reg_trend.update_layout(xaxis=dict(type="category"))
-        st.plotly_chart(fig_reg_trend, use_container_width=True)
+        fig_reg_bar.update_traces(textposition="outside")
+        st.plotly_chart(fig_reg_bar, use_container_width=True)
 
     except Exception as e:
-        st.error(f"Could not draw regulator trend timeline: {e}")
+        st.error(f"Could not draw regulatory bar chart: {e}")
 
-    # ========= REGULATORY KEYWORD CLOUD =========
+    # ============================================================
+    # 3️⃣ MOST FREQUENT KEYWORDS (WORD CLOUD STYLE BAR)
+    # ============================================================
     st.subheader("🔍 Most Frequent Regulatory Keywords")
 
     try:
-        all_keys = []
-        for items in df_processed["Regulatory_Drivers"]:
-            if isinstance(items, list):
-                all_keys.extend(items)
+        kw_list = []
 
-        key_df = (
-            pd.Series(all_keys)
+        # Scan Opportunity Name + Domain + Solution Type for regulator keywords
+        for _, row in df_processed.iterrows():
+            text = (
+                str(row["Opportunity Name"]) + " " +
+                str(row["Domain"]) + " " +
+                str(row["Solution Type"])
+            ).lower()
+
+            for reg, kws in REGULATORY_KEYWORDS.items():
+                for kw in kws:
+                    if kw in text:
+                        kw_list.append(kw)
+
+        kw_df = (
+            pd.Series(kw_list)
             .value_counts()
             .reset_index()
             .rename(columns={"index": "Keyword", 0: "Frequency"})
         )
 
-        fig_key_cloud = px.bar(
-            key_df,
+        fig_kw = px.bar(
+            kw_df.head(20),
             x="Keyword",
             y="Frequency",
-            title="Regulatory Keyword Cloud",
+            title="Top Regulatory Keywords (Opportunity Metadata)",
             text="Frequency",
         )
-        fig_key_cloud.update_traces(textposition="outside")
-        fig_key_cloud.update_layout(xaxis_tickangle=-45)
-        st.plotly_chart(fig_key_cloud, use_container_width=True)
+
+        fig_kw.update_traces(textposition="outside")
+        fig_kw.update_layout(xaxis_tickangle=-35)
+
+        st.plotly_chart(fig_kw, use_container_width=True)
 
     except Exception as e:
         st.error(f"Could not draw keyword cloud: {e}")
 
-
-    # ========= HEATMAP: Regulator → Control Category =========
-    st.subheader("🔥 Regulatory Demand Heatmap")
-
-    try:
-        heat_data = []
-
-        for reg, categories in REGULATOR_CONTROLS.items():
-            for cat in categories:
-                heat_data.append([reg, cat, 1])
-
-        heat_df = pd.DataFrame(heat_data, columns=["Regulator", "Category", "Required"])
-
-        pivot_df = heat_df.pivot(index="Regulator", columns="Category", values="Required")
-
-        fig_heat = px.imshow(
-            pivot_df,
-            aspect="auto",
-            color_continuous_scale="Blues",
-            title="Regulator vs Control Category Demand Map",
-        )
-
-        st.plotly_chart(fig_heat, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"Could not draw regulator heatmap: {e}")
 
 # ---------------------------------------------------------
 # TAB 5 – REGULATORY REVENUE FORECAST
