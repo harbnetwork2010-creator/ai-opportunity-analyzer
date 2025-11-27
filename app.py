@@ -1157,78 +1157,113 @@ with tabs[2]:
     else:
         st.info("No customer-level KPIs available.")
 
+# Ensure regulatory driver column exists and is list-like
+    if "Regulatory_Drivers" not in df_processed.columns:
+        df_processed["Regulatory_Drivers"] = [[] for _ in range(len(df_processed))]
+
+# Normalize (convert strings, NaN to lists)
+    df_processed["Regulatory_Drivers"] = df_processed["Regulatory_Drivers"].apply(
+        lambda x: x if isinstance(x, list) else []
+)
+
 # ---------------------------------------------------------
 # TAB 4 – REGULATORY VIEW
 # ---------------------------------------------------------
 with tabs[3]:
+
     st.header("⚖ Regulatory View")
 
     # ============================================================
-    # 1️⃣ REGULATORY SHARE DISTRIBUTION
+    # Create regulator dataframe safely
     # ============================================================
-    st.subheader("📊 Regulator Share Distribution")
-
     try:
+        reg_series = (
+            df_processed["Regulatory_Drivers"]
+            .explode()
+            .dropna()
+        )
+
+        # If empty, handle gracefully
+        if reg_series.empty:
+            st.warning("No regulatory data found in your dataset.")
+            raise ValueError("reg_series empty")
+
+        # Frequency table
         reg_share_df = (
-            df_processed
-            .explode("Regulatory_Drivers")["Regulatory_Drivers"]
-            .value_counts()
+            reg_series.value_counts()
             .reset_index()
             .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
         )
 
-        fig_pie = px.pie(
-            reg_share_df,
-            names="Regulator",
-            values="Count",
-            title="Distribution of Regulatory Drivers"
-        )
-        st.plotly_chart(fig_pie, use_container_width=True)
+    except Exception as e:
+        reg_share_df = pd.DataFrame(columns=["Regulator", "Count"])
+        st.error(f"Could not prepare regulatory data: {e}")
+
+    # ============================================================
+    # 📊 PIE — Regulator Share Distribution
+    # ============================================================
+    st.subheader("📊 Regulator Share Distribution")
+
+    try:
+        if reg_share_df.empty:
+            st.info("No regulatory drivers available to display.")
+        else:
+            fig_pie = px.pie(
+                reg_share_df,
+                names="Regulator",
+                values="Count",
+                title="Distribution of Regulatory Drivers"
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
 
     except Exception as e:
         st.error(f"Could not draw regulator share pie chart: {e}")
 
     # ============================================================
-    # 2️⃣ REGULATOR OCCURRENCE BAR CHART
+    # 📈 BAR — Regulator Frequency
     # ============================================================
     st.subheader("📈 Regulatory Driver Frequency")
 
     try:
-        reg_bar_df = reg_share_df.copy()
-
-        fig_reg_bar = px.bar(
-            reg_bar_df,
-            x="Regulator",
-            y="Count",
-            title="Regulator Appearance Frequency",
-            text="Count"
-        )
-        fig_reg_bar.update_traces(textposition="outside")
-        st.plotly_chart(fig_reg_bar, use_container_width=True)
+        if reg_share_df.empty:
+            st.info("No regulatory drivers available to display.")
+        else:
+            fig_bar = px.bar(
+                reg_share_df,
+                x="Regulator",
+                y="Count",
+                text="Count",
+                title="Frequency of Regulatory Drivers"
+            )
+            fig_bar.update_traces(textposition="outside")
+            fig_bar.update_layout(xaxis_tickangle=-40)
+            st.plotly_chart(fig_bar, use_container_width=True)
 
     except Exception as e:
         st.error(f"Could not draw regulatory bar chart: {e}")
 
     # ============================================================
-    # 3️⃣ MOST FREQUENT KEYWORDS (WORD CLOUD STYLE BAR)
+    # 🔍 KEYWORDS — Most Frequent Regulatory Keywords
     # ============================================================
     st.subheader("🔍 Most Frequent Regulatory Keywords")
 
     try:
         kw_list = []
 
-        # Scan Opportunity Name + Domain + Solution Type for regulator keywords
         for _, row in df_processed.iterrows():
             text = (
-                str(row["Opportunity Name"]) + " " +
-                str(row["Domain"]) + " " +
-                str(row["Solution Type"])
-            ).lower()
+                str(row.get("Opportunity Name", "")) + " " +
+                str(row.get("Domain", "")) + " " +
+                str(row.get("Solution Type", "")).lower()
+            )
 
             for reg, kws in REGULATORY_KEYWORDS.items():
                 for kw in kws:
-                    if kw in text:
+                    if kw in text.lower():
                         kw_list.append(kw)
+
+        if not kw_list:
+            st.info("No regulatory keywords detected in your dataset.")
 
         kw_df = (
             pd.Series(kw_list)
@@ -1238,20 +1273,19 @@ with tabs[3]:
         )
 
         fig_kw = px.bar(
-            kw_df.head(20),
+            kw_df.head(15),
             x="Keyword",
             y="Frequency",
-            title="Top Regulatory Keywords (Opportunity Metadata)",
             text="Frequency",
+            title="Most Common Regulatory Keywords"
         )
-
         fig_kw.update_traces(textposition="outside")
-        fig_kw.update_layout(xaxis_tickangle=-35)
-
+        fig_kw.update_layout(xaxis_tickangle=-30)
         st.plotly_chart(fig_kw, use_container_width=True)
 
     except Exception as e:
         st.error(f"Could not draw keyword cloud: {e}")
+
 
 
 # ---------------------------------------------------------
