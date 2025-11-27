@@ -30,9 +30,27 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Use a nice dark theme for Plotly
-px.defaults.template = "plotly_dark"
+# Use a light / corporate template for Plotly
+px.defaults.template = "plotly_white"
 
+# Simple CSS for a light blue-accent corporate theme
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-color: #f5f7fb;
+    }
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 2rem;
+    }
+    h1, h2, h3, h4 {
+        color: #12355b;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # =========================================================
 # HELPER FUNCTIONS
@@ -91,6 +109,65 @@ REGULATORY_KEYWORDS = {
         "securities",
     ],
 }
+
+# Mapping of sector -> primary regulator
+SECTOR_REGULATOR_MAP = {
+    "Banking": "SAMA",
+    "Fintech": "SAMA",
+    "Payments": "SAMA",
+    "Insurance": "SAMA",
+    "Capital Markets": "CMA",
+    "Investment": "CMA",
+    "Government": "NCA",
+    "Critical Infrastructure": "NCA",
+    "Healthcare": "NCA",
+    "Education": "General",
+    "Private": "General",
+    "Other": "General",
+}
+
+# Regulator -> required cybersecurity control themes
+REGULATOR_CONTROLS = {
+    "SAMA": [
+        "DLP",
+        "NDR/NTA",
+        "EDR/XDR",
+        "IAM",
+        "PAM",
+        "SIEM/SOC",
+        "Email Security",
+        "Threat Intelligence",
+    ],
+    "NCA": [
+        "IAM",
+        "PAM",
+        "SIEM/SOC",
+        "EDR/XDR",
+        "NGFW/WAF",
+        "Network Segmentation/NAC",
+        "Vulnerability Management",
+        "Data Protection/DLP",
+        "OT Security",
+    ],
+    "CMA": [
+        "SIEM/SOC",
+        "IAM/MFA",
+        "Endpoint Monitoring",
+        "Data Governance",
+        "Risk Monitoring",
+        "Trading Surveillance",
+    ],
+    "General": [
+        "Firewall/Perimeter",
+        "EDR/XDR",
+        "Backup/DR",
+        "Email Security",
+        "Basic IAM",
+    ],
+}
+
+# Average SAR spend per missing control (rough business rule)
+AVERAGE_CONTROL_COST_SAR = 200000.0
 
 
 def parse_date(series):
@@ -443,6 +520,151 @@ def regulatory_business_summary(df):
     return pd.DataFrame(records)
 
 
+def infer_sector(customer_name: str, domain: str = "") -> str:
+    """Heuristic sector detection based on customer name + domain text."""
+    text = f"{customer_name} {domain}".lower()
+
+    if any(k in text for k in ["bank", "islamic", "riyad", "rajhi", "inma"]):
+        return "Banking"
+    if any(k in text for k in ["insurance", "takaful"]):
+        return "Insurance"
+    if any(k in text for k in ["tadawul", "brokerage", "trading", "securities"]):
+        return "Capital Markets"
+    if any(k in text for k in ["ministry", "municipality", "authority", "gov", "government"]):
+        return "Government"
+    if any(k in text for k in ["university", "college", "school", "academy"]):
+        return "Education"
+    if any(k in text for k in ["hospital", "clinic", "medical", "health"]):
+        return "Healthcare"
+    if any(k in text for k in ["plant", "refinery", "petro", "industrial", "factory"]):
+        return "Critical Infrastructure"
+    if any(k in text for k in ["fintech", "payment", "wallet"]):
+        return "Fintech"
+    return "Private"
+
+
+def map_sector_to_regulator(sector: str) -> str:
+    return SECTOR_REGULATOR_MAP.get(sector, "General")
+
+
+def get_regulator_controls(regulator: str):
+    return REGULATOR_CONTROLS.get(regulator, REGULATOR_CONTROLS["General"])
+
+
+def infer_implemented_controls(row) -> list:
+    """
+    Rough heuristic: infer which controls are already touched based on Solution Type / Domain text.
+    """
+    text = f"{row.get('Domain', '')} {row.get('Solution Type', '')}".lower()
+    implemented = set()
+
+    CONTROL_KEYWORDS = {
+        "DLP": ["dlp", "data loss", "data protection"],
+        "NDR/NTA": ["ndr", "nta", "network detection"],
+        "EDR/XDR": ["edr", "xdr", "endpoint detect", "endpoint protection"],
+        "IAM": ["iam", "identity", "sso", "single sign-on"],
+        "PAM": ["pam", "privileged access", "privileged account"],
+        "SIEM/SOC": ["siem", "soc", "security operation"],
+        "Email Security": ["email security", "secure email", "phishing"],
+        "Threat Intelligence": ["threat intel", "ti", "ioc"],
+        "NGFW/WAF": ["waf", "ngfw", "next-gen firewall", "application firewall"],
+        "Network Segmentation/NAC": ["nac", "network access control", "segmentation"],
+        "Vulnerability Management": ["vulnerability", "scanner", "vam"],
+        "Data Protection/DLP": ["dlp", "data protection"],
+        "OT Security": ["scada", "ics", "ot security"],
+        "Firewall/Perimeter": ["firewall", "perimeter"],
+        "Backup/DR": ["backup", "disaster recovery", "dr site"],
+        "Basic IAM": ["active directory", "ad", "identity"],
+        "Endpoint Monitoring": ["endpoint", "antivirus", "av"],
+        "Data Governance": ["data governance", "classification"],
+        "Risk Monitoring": ["risk monitoring", "grc"],
+        "Trading Surveillance": ["trading surveillance", "market abuse"],
+    }
+
+    for control, keywords in CONTROL_KEYWORDS.items():
+        if any(k in text for k in keywords):
+            implemented.add(control)
+
+    return sorted(list(implemented))
+
+
+def build_regulatory_forecast(df, customer_kpis):
+    """
+    Build a per-customer regulatory revenue forecast based on:
+    - Required controls (from regulator)
+    - Implemented controls (inferred from opportunities)
+    - Missing controls
+    - Estimated additional spend
+    - Historical + pipeline revenue
+    """
+    records = []
+    grouped = df.groupby("Customer Name")
+
+    # Helper: map customer_kpis for fast lookup
+    kpi_map = {}
+    if not customer_kpis.empty:
+        for _, row in customer_kpis.iterrows():
+            kpi_map[row["Customer Name"]] = row.to_dict()
+
+    for cust, grp in grouped:
+        sector = grp["Sector"].iloc[0] if "Sector" in grp.columns else "Private"
+        regulator = grp["Regulator"].iloc[0] if "Regulator" in grp.columns else map_sector_to_regulator(sector)
+
+        required_controls = get_regulator_controls(regulator)
+
+        # Implemented controls = union over all opps for this customer
+        implemented = set()
+        if "Implemented_Controls" in grp.columns:
+            for lst in grp["Implemented_Controls"]:
+                if isinstance(lst, list):
+                    implemented.update(lst)
+
+        missing_controls = [c for c in required_controls if c not in implemented]
+        missing_count = len(missing_controls)
+
+        # Historical revenue from df (won opps)
+        won_mask = grp["Status_Simplified"] == "Won"
+        historical_rev = grp.loc[won_mask, "Final Contract Value (SAR)"].sum()
+
+        # Pipeline expected from KPIs if available
+        pipeline_expected = 0.0
+        engagement_score = np.nan
+        win_rate = np.nan
+        if cust in kpi_map:
+            pipeline_expected = kpi_map[cust].get("Pipeline_Expected_Revenue_SAR", 0.0)
+            engagement_score = kpi_map[cust].get("Engagement_Score", np.nan)
+            win_rate = kpi_map[cust].get("Win_Rate", np.nan)
+
+        est_additional_spend = missing_count * AVERAGE_CONTROL_COST_SAR
+
+        # Simple priority score: more missing controls + higher engagement + higher pipeline
+        priority_score = (
+            missing_count
+            + np.log1p(pipeline_expected / 1_000_000.0)
+            + (engagement_score if pd.notna(engagement_score) else 0.0)
+        )
+
+        records.append(
+            {
+                "Customer Name": cust,
+                "Sector": sector,
+                "Regulator": regulator,
+                "Required_Controls": required_controls,
+                "Implemented_Controls": sorted(list(implemented)),
+                "Missing_Controls": missing_controls,
+                "Missing_Control_Count": missing_count,
+                "Estimated_Additional_Spend_SAR": est_additional_spend,
+                "Historical_Revenue_SAR": historical_rev,
+                "Pipeline_Expected_Revenue_SAR": pipeline_expected,
+                "Win_Rate": win_rate,
+                "Engagement_Score": engagement_score,
+                "Priority_Score": priority_score,
+            }
+        )
+
+    return pd.DataFrame(records)
+
+
 # =========================================================
 # MAIN ANALYSIS PIPELINE (CACHED)
 # =========================================================
@@ -683,12 +905,27 @@ def run_full_analysis(uploaded_bytes, filename):
         lambda x: x[0] if isinstance(x, list) and x else "General"
     )
 
+    # Sector / regulator mapping
+    if "Sector" not in df.columns:
+        df["Sector"] = df.apply(
+            lambda r: infer_sector(r.get("Customer Name", ""), r.get("Domain", "")),
+            axis=1,
+        )
+    df["Regulator"] = df["Sector"].apply(map_sector_to_regulator)
+
+    # Implemented / required / missing controls
+    df["Implemented_Controls"] = df.apply(infer_implemented_controls, axis=1)
+    df["Required_Controls"] = df["Regulator"].apply(get_regulator_controls)
+
     # Business gaps & categories
     df = detect_business_gaps(df, today=today)
 
     # Customer KPIs & regulatory summary
     customer_kpis = build_customer_kpis(df)
     reg_business = regulatory_business_summary(df)
+
+    # Build regulatory revenue forecast per customer
+    regulatory_forecast = build_regulatory_forecast(df, customer_kpis)
 
     metrics = {
         "classification_accuracy": accuracy,
@@ -698,7 +935,7 @@ def run_full_analysis(uploaded_bytes, filename):
         "missing_columns": missing_cols,
     }
 
-    return df, customer_kpis, reg_business, metrics
+    return df, customer_kpis, reg_business, regulatory_forecast, metrics
 
 
 # =========================================================
@@ -708,7 +945,7 @@ def run_full_analysis(uploaded_bytes, filename):
 st.title("AI-Driven Smart Business Opportunity Analyzer")
 st.write(
     "Upload your **opportunity tracking sheet** (Excel/CSV). "
-    "The app will analyse opportunities, train ML models, and generate insights per customer and regulator."
+    "The app will analyse opportunities, train ML models, and generate insights per customer, regulator, and sector."
 )
 
 uploaded_file = st.file_uploader(
@@ -724,7 +961,7 @@ if not uploaded_file:
 
 # Run analysis
 with st.spinner("Running AI analysis on your opportunities..."):
-    df_pred, customer_kpis, reg_business, metrics = run_full_analysis(
+    df_pred, customer_kpis, reg_business, regulatory_forecast, metrics = run_full_analysis(
         uploaded_file.getvalue(), uploaded_file.name
     )
 
@@ -768,8 +1005,14 @@ if metrics["missing_columns"]:
 # TABS FOR DETAILED VIEWS
 # =========================================================
 
-tab_overview, tab_opps, tab_customers, tab_reg = st.tabs(
-    ["📊 Data Overview", "🎯 Opportunities AI", "🤝 Customer Insights", "⚖ Regulatory View"]
+tab_overview, tab_opps, tab_customers, tab_reg, tab_forecast = st.tabs(
+    [
+        "📊 Data Overview",
+        "🎯 Opportunities AI",
+        "🤝 Customer Insights",
+        "⚖ Regulatory View",
+        "📈 Regulatory Revenue Forecast",
+    ]
 )
 
 # =========================================================
@@ -919,11 +1162,10 @@ with tab_overview:
     st.write(f"Number of opportunities with detected gaps: **{int(gap_count)}**")
 
     if gap_count > 0:
-        # Ensure Gap_Category exists (safety)
         if "Gap_Category" not in gap_df.columns:
             gap_df["Gap_Category"] = gap_df["Gap_Reason"].apply(categorize_gap)
 
-        # 1) Bar chart: number of gaps by category
+        # 1) Gap frequency by category
         gap_counts = (
             gap_df["Gap_Category"]
             .value_counts()
@@ -931,7 +1173,7 @@ with tab_overview:
             .reset_index(name="Count")
         )
 
-        # 2) Value impact by gap category (expected value)
+        # 2) Value impact by gap category
         if "Expected Value (SAR)" in gap_df.columns:
             gap_value = (
                 gap_df.groupby("Gap_Category")["Expected Value (SAR)"]
@@ -1053,6 +1295,8 @@ with tab_opps:
         "Final Contract Value (SAR)",
         "Predicted_Final_Value",
         "Primary_Regulatory_Driver",
+        "Regulator",
+        "Sector",
         "Opportunity_Cluster",
         "Gap_Flag",
         "Gap_Category",
@@ -1068,6 +1312,38 @@ with tab_opps:
             by="Predicted_Win_Prob", ascending=False
         )
     )
+
+    # Extra visualisations for Opportunities AI
+    st.markdown("---")
+    st.markdown("### Win Probability & Value Insights")
+
+    col_o1, col_o2 = st.columns(2)
+
+    with col_o1:
+        if "Predicted_Win_Prob" in filtered.columns:
+            st.markdown("**Distribution of Predicted Win Probability**")
+            fig_wp = px.histogram(
+                filtered,
+                x="Predicted_Win_Prob",
+                nbins=20,
+                labels={"Predicted_Win_Prob": "Predicted win probability"},
+            )
+            st.plotly_chart(fig_wp, use_container_width=True)
+
+    with col_o2:
+        if "Expected Value (SAR)" in filtered.columns and "Predicted_Win_Prob" in filtered.columns:
+            st.markdown("**Expected Value vs Win Probability**")
+            fig_scatter = px.scatter(
+                filtered,
+                x="Predicted_Win_Prob",
+                y="Expected Value (SAR)",
+                hover_data=["Opportunity Name", "Customer Name"],
+                labels={
+                    "Predicted_Win_Prob": "Predicted win probability",
+                    "Expected Value (SAR)": "Expected value (SAR)",
+                },
+            )
+            st.plotly_chart(fig_scatter, use_container_width=True)
 
     st.download_button(
         "Download opportunities with predictions (CSV)",
@@ -1108,6 +1384,24 @@ with tab_customers:
         )
         st.dataframe(cust_display.head(20))
 
+        st.markdown("---")
+
+        # Scatter plot: Engagement vs Historical Revenue
+        st.markdown("### Engagement vs Historical Revenue")
+        fig_eng = px.scatter(
+            customer_kpis_sorted,
+            x="Engagement_Score",
+            y="Historical_Revenue_SAR",
+            hover_data=["Customer Name"],
+            labels={
+                "Engagement_Score": "Engagement score",
+                "Historical_Revenue_SAR": "Historical revenue (SAR)",
+            },
+        )
+        st.plotly_chart(fig_eng, use_container_width=True)
+
+        st.markdown("---")
+
         cust_names = sorted(customer_kpis["Customer Name"].unique().tolist())
         selected_customer = st.selectbox("Select a customer", options=cust_names)
 
@@ -1145,6 +1439,8 @@ with tab_customers:
                     "Final Contract Value (SAR)",
                     "Predicted_Final_Value",
                     "Primary_Regulatory_Driver",
+                    "Regulator",
+                    "Sector",
                     "Gap_Flag",
                     "Gap_Category",
                     "Gap_Reason",
@@ -1198,3 +1494,124 @@ with tab_reg:
             title=f"{reg_filter} - Top Customers by Historical & Expected Revenue",
         )
         st.plotly_chart(fig_reg, use_container_width=True)
+
+
+# =========================================================
+# TAB 5: REGULATORY REVENUE FORECAST
+# =========================================================
+
+with tab_forecast:
+    st.subheader("Regulatory-Driven Revenue Forecast & Recommendations")
+
+    if regulatory_forecast.empty:
+        st.info("No regulatory forecast data available.")
+    else:
+        # Top-level KPIs
+        total_est_spend = regulatory_forecast["Estimated_Additional_Spend_SAR"].sum()
+        total_pipeline = regulatory_forecast["Pipeline_Expected_Revenue_SAR"].sum()
+
+        f1, f2, f3 = st.columns(3)
+        with f1:
+            st.metric(
+                "Estimated Additional Compliance Spend (All Customers)",
+                fmt_number(total_est_spend) + " SAR",
+            )
+        with f2:
+            st.metric(
+                "Total Pipeline (All Customers)",
+                fmt_number(total_pipeline) + " SAR",
+            )
+        with f3:
+            st.metric(
+                "Customers with Missing Controls",
+                int((regulatory_forecast["Missing_Control_Count"] > 0).sum()),
+            )
+
+        st.markdown("---")
+
+        # Bar: Estimated spend by customer
+        st.markdown("### Top Customers by Estimated Regulatory Spend")
+        top_forecast = regulatory_forecast.sort_values(
+            by="Estimated_Additional_Spend_SAR", ascending=False
+        ).head(15)
+
+        fig_forecast = px.bar(
+            top_forecast,
+            x="Customer Name",
+            y="Estimated_Additional_Spend_SAR",
+            color="Regulator",
+            text="Estimated_Additional_Spend_SAR",
+            labels={
+                "Customer Name": "Customer",
+                "Estimated_Additional_Spend_SAR": "Estimated additional spend (SAR)",
+            },
+        )
+        fig_forecast.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+        fig_forecast.update_layout(xaxis_tickangle=-35)
+        st.plotly_chart(fig_forecast, use_container_width=True)
+
+        st.caption(
+            "These customers have the **largest estimated spend** to close their regulatory cybersecurity gaps "
+            "based on mandatory controls for NCA / SAMA / CMA / General."
+        )
+
+        st.markdown("---")
+
+        # Regulator-level summary
+        st.markdown("### Spend & Gaps by Regulator")
+
+        reg_group = (
+            regulatory_forecast.groupby("Regulator")
+            .agg(
+                Estimated_Additional_Spend_SAR=("Estimated_Additional_Spend_SAR", "sum"),
+                Missing_Control_Count=("Missing_Control_Count", "sum"),
+            )
+            .reset_index()
+        )
+
+        fig_reg_gap = px.bar(
+            reg_group,
+            x="Regulator",
+            y="Estimated_Additional_Spend_SAR",
+            text="Estimated_Additional_Spend_SAR",
+            labels={
+                "Regulator": "Regulator",
+                "Estimated_Additional_Spend_SAR": "Estimated additional spend (SAR)",
+            },
+        )
+        fig_reg_gap.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+        st.plotly_chart(fig_reg_gap, use_container_width=True)
+
+        st.markdown("---")
+
+        # Detailed per-customer table with controls
+        st.markdown("### Detailed Regulatory View per Customer")
+
+        # Format money columns
+        regf_display = regulatory_forecast.copy()
+        regf_display = format_currency_columns(
+            regf_display,
+            [
+                "Estimated_Additional_Spend_SAR",
+                "Historical_Revenue_SAR",
+                "Pipeline_Expected_Revenue_SAR",
+            ],
+        )
+
+        st.dataframe(
+            regf_display[
+                [
+                    "Customer Name",
+                    "Sector",
+                    "Regulator",
+                    "Missing_Control_Count",
+                    "Estimated_Additional_Spend_SAR",
+                    "Historical_Revenue_SAR",
+                    "Pipeline_Expected_Revenue_SAR",
+                    "Required_Controls",
+                    "Implemented_Controls",
+                    "Missing_Controls",
+                    "Priority_Score",
+                ]
+            ].sort_values(by="Priority_Score", ascending=False)
+        )
