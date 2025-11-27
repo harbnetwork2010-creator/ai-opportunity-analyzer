@@ -525,24 +525,23 @@ def build_customer_kpis(df):
         )
 
         pipeline = grp[inprog_mask].copy()
-if not pipeline.empty:
+        if not pipeline.empty:
 
-    # Normalize predicted value
-    pred_val = pipeline["Predicted_Final_Value"].apply(
-        lambda v: normalize_to_float(v, default=0.0)
-    )
+            # Normalize predicted value
+            pred_val = pipeline["Predicted_Final_Value"].apply(
+                lambda v: normalize_to_float(v, default=0.0)
+            )
 
-    # Normalize predicted win probability
-    pred_prob = pipeline["Predicted_Win_Prob"].apply(
-        lambda v: normalize_to_float(v, default=0.5)
-    )
+            # Normalize predicted win probability
+            pred_prob = pipeline["Predicted_Win_Prob"].apply(
+                lambda v: normalize_to_float(v, default=0.5)
+            )
 
-    # Multiply safely
-    pipeline_expected_value = (pred_val * pred_prob).sum()
+            # Multiply safely
+            pipeline_expected_value = (pred_val * pred_prob).sum()
 
-else:
-    pipeline_expected_value = 0.0
-
+        else:
+            pipeline_expected_value = 0.0
 
 
         reg_counts = (
