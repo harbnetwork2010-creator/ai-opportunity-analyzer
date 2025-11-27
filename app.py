@@ -702,8 +702,8 @@ def explain_customer_win_loss(customer_name, df):
 
     summary["top_loss_stage"] = top_loss_stage
 
-        insights.append(
-            f"Most losses happen around the '{top_loss_stage}' stage; investigate what typically goes wrong at this point."
+    insights.append(
+        f"Most losses happen around the '{top_loss_stage}' stage; investigate what typically goes wrong at this point."
         )
 
     summary["insights"] = insights
