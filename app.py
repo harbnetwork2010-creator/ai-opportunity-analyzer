@@ -1,3 +1,5 @@
+# AI-Driven Smart Business Opportunity Analyzer – Enterprise Edition
+
 import io
 from datetime import datetime
 
@@ -5,8 +7,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -16,47 +16,40 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
 
 
-# ------------------------------------------------------------
+# =========================================================
 # UNIVERSAL SAFE NUMERIC NORMALIZER
-# ------------------------------------------------------------
-def normalize_to_float(x, default=0.0):
+# =========================================================
+
+def normalize_to_float(x, default: float = 0.0) -> float:
     """
     Convert ANY strange value into a usable float.
     Handles:
-    - lists with 1 number → take first
-    - lists with many numbers → take mean
-    - strings → convert if numeric
-    - None / NaN → default
-    - invalid → default
+      - lists/tuples → mean (or first if single element)
+      - strings → numeric if possible
+      - None/NaN → default
+      - errors → default
     """
     try:
-        # Handle lists/arrays
-        if isinstance(x, (list, tuple)):
+        if isinstance(x, (list, tuple, np.ndarray)):
+            x = list(x)
+            if len(x) == 0:
+                return default
             if len(x) == 1:
                 return float(x[0])
-            elif len(x) > 1:
-                return float(sum(x) / len(x))   # take MEAN
-            else:
-                return default
+            return float(sum(x) / len(x))
 
-        # Handle empty strings
-        if x is None or x == "":
+        if x is None or (isinstance(x, str) and x.strip() == ""):
             return default
 
-        # Try numeric conversion
         return float(x)
-
-    except:
+    except Exception:
         return default
 
 
 # =========================================================
-# STREAMLIT PAGE CONFIG & GLOBAL SETTINGS
+# STREAMLIT PAGE CONFIG & THEME
 # =========================================================
 
 st.set_page_config(
@@ -65,10 +58,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Use a light / corporate template for Plotly
+# Light corporate theme for Plotly
 px.defaults.template = "plotly_white"
 
-# Simple CSS for a light blue-accent corporate theme
+# CSS styling
 st.markdown(
     """
     <style>
@@ -82,13 +75,24 @@ st.markdown(
     h1, h2, h3, h4 {
         color: #12355b;
     }
+    .metric-card {
+        background: #ffffff;
+        padding: 0.8rem 1rem;
+        border-radius: 0.7rem;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+        margin-bottom: 0.8rem;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+# Sidebar debug toggle
+debug_mode = st.sidebar.checkbox("🔍 Debug mode", value=False)
+
+
 # =========================================================
-# HELPER FUNCTIONS & KNOWLEDGE BASE
+# CONSTANTS & KNOWLEDGE BASE
 # =========================================================
 
 EXPECTED_COLUMNS = [
@@ -145,7 +149,7 @@ REGULATORY_KEYWORDS = {
     ],
 }
 
-# Mapping of sector -> primary regulator
+# Sector → primary regulator
 SECTOR_REGULATOR_MAP = {
     "Banking": "SAMA",
     "Fintech": "SAMA",
@@ -161,7 +165,8 @@ SECTOR_REGULATOR_MAP = {
     "Other": "General",
 }
 
-# ---- FULL CONTROL LIBRARY (GROUPED BY CATEGORY) ----
+# --- CONTROL LIBRARY (grouped by category) ---
+
 CONTROL_LIBRARY = {
     "Governance & Strategy": [
         "Cybersecurity Strategy",
@@ -284,7 +289,6 @@ CONTROL_LIBRARY = {
     ],
 }
 
-# Regulator -> control categories (which groups apply)
 REGULATOR_CONTROLS = {
     "NCA": [
         "Governance & Strategy",
@@ -346,7 +350,6 @@ REGULATOR_CONTROLS = {
     ],
 }
 
-# Expected "next wave" controls per regulator (prediction of upcoming requirements)
 EXPECTED_NEW_CONTROLS = {
     "NCA": [
         "Zero-Trust Architecture Adoption",
@@ -373,19 +376,22 @@ EXPECTED_NEW_CONTROLS = {
     ],
 }
 
-# Average SAR spend per missing control (rough business rule)
-AVERAGE_CONTROL_COST_SAR = 200000.0
+AVERAGE_CONTROL_COST_SAR = 200_000.0
 
 
-def get_regulator_control_categories(regulator: str):
-    return REGULATOR_CONTROLS.get(regulator, REGULATOR_CONTROLS["General"])
+def get_regulator_control_categories(reg: str):
+    return REGULATOR_CONTROLS.get(reg, REGULATOR_CONTROLS["General"])
 
 
-def get_expected_new_controls(regulator: str):
-    return EXPECTED_NEW_CONTROLS.get(regulator, EXPECTED_NEW_CONTROLS["General"])
+def get_expected_new_controls(reg: str):
+    return EXPECTED_NEW_CONTROLS.get(reg, EXPECTED_NEW_CONTROLS["General"])
 
 
-def parse_date(series):
+# =========================================================
+# BASIC HELPERS
+# =========================================================
+
+def parse_date(series: pd.Series) -> pd.Series:
     return pd.to_datetime(series, errors="coerce", dayfirst=True)
 
 
@@ -395,13 +401,12 @@ def map_status(status):
     s = str(status).strip().lower()
     if "won" in s or "success" in s:
         return "Won"
-    elif "lost" in s or "closed lost" in s or "cancel" in s:
+    if "lost" in s or "closed lost" in s or "cancel" in s:
         return "Lost"
-    else:
-        return "In Progress"
+    return "In Progress"
 
 
-def tag_regulatory_drivers(row):
+def tag_regulatory_drivers(row: pd.Series):
     text_cols = [
         "Opportunity Name",
         "Domain",
@@ -419,29 +424,30 @@ def tag_regulatory_drivers(row):
 
 
 def fmt_number(x):
-    """Format number with commas and 2 decimals for display."""
     try:
         return f"{float(x):,.2f}"
     except Exception:
         return x
 
 
-def format_currency_columns(df, columns):
-    """Return a copy of df with formatted currency columns (for display only)."""
+def format_currency_columns(df: pd.DataFrame, cols):
     df_disp = df.copy()
-    for c in columns:
+    for c in cols:
         if c in df_disp.columns:
-            df_disp[c] = df_disp[c].apply(lambda v: fmt_number(v) if pd.notna(v) else "")
+            df_disp[c] = df_disp[c].apply(
+                lambda v: fmt_number(v) if pd.notna(v) else ""
+            )
     return df_disp
 
 
-def categorize_gap(reason):
-    """High-level category for each gap reason."""
+# =========================================================
+# GAP DETECTION
+# =========================================================
+
+def categorize_gap(reason: str) -> str:
     if pd.isna(reason) or not str(reason).strip():
         return "No Gap"
-
     text = str(reason).lower()
-
     if "high-value opportunity close to deadline" in text:
         return "Deadline Risk (High Value)"
     if "no proposal submission date" in text:
@@ -455,7 +461,7 @@ def categorize_gap(reason):
     return "Other"
 
 
-def detect_business_gaps(df, today=None):
+def detect_business_gaps(df: pd.DataFrame, today=None) -> pd.DataFrame:
     if today is None:
         today = pd.Timestamp.today()
 
@@ -465,10 +471,9 @@ def detect_business_gaps(df, today=None):
     for _, row in data.iterrows():
         row_reasons = []
 
-        # Rule 1: High value, near deadline, still in progress
         ev = row.get("Expected Value (SAR)", np.nan)
         try:
-            high_value = pd.notna(ev) and ev > 100000  # adjustable threshold
+            high_value = pd.notna(ev) and float(ev) > 100_000
         except Exception:
             high_value = False
 
@@ -485,14 +490,12 @@ def detect_business_gaps(df, today=None):
                 "High-value opportunity close to deadline still in progress."
             )
 
-        # Rule 2: No proposal but deadline reached/passed
         proposal_date = row.get("Proposal Submission Date ( TP sent to BDO)")
         if pd.isna(proposal_date) and pd.notna(days_to_deadline) and days_to_deadline <= 0:
             row_reasons.append(
                 "Deadline reached/passed but no proposal submission date recorded."
             )
 
-        # Rule 3: Not updated for long time
         days_since_update = row.get("days_since_last_update", np.nan)
         if (
             pd.notna(days_since_update)
@@ -503,15 +506,19 @@ def detect_business_gaps(df, today=None):
                 "Opportunity not updated for more than 30 days but still in progress."
             )
 
-        # Rule 4: Large deviation between expected and final value
         expected_val = row.get("Expected Value (SAR)", np.nan)
         final_val = row.get("Final Contract Value (SAR)", np.nan)
         if pd.notna(expected_val) and pd.notna(final_val) and status in ["Won", "Lost"]:
-            diff_ratio = abs(final_val - expected_val) / max(expected_val, 1)
-            if diff_ratio > 0.3:
-                row_reasons.append(
-                    "Significant deviation between expected and final contract value."
+            try:
+                diff_ratio = abs(float(final_val) - float(expected_val)) / max(
+                    float(expected_val), 1.0
                 )
+                if diff_ratio > 0.3:
+                    row_reasons.append(
+                        "Significant deviation between expected and final contract value."
+                    )
+            except Exception:
+                pass
 
         reasons.append("; ".join(row_reasons) if row_reasons else "")
 
@@ -521,7 +528,11 @@ def detect_business_gaps(df, today=None):
     return data
 
 
-def build_customer_kpis(df):
+# =========================================================
+# CUSTOMER KPIs
+# =========================================================
+
+def build_customer_kpis(df: pd.DataFrame) -> pd.DataFrame:
     if "Customer Name" not in df.columns:
         return pd.DataFrame()
 
@@ -556,28 +567,20 @@ def build_customer_kpis(df):
         engagement_score = (
             recency_component
             + np.log1p(frequency)
-            + np.log1p(monetary / 100000.0 + 1e-9)
+            + np.log1p(normalize_to_float(monetary) / 100_000.0 + 1e-9)
         )
 
         pipeline = grp[inprog_mask].copy()
         if not pipeline.empty:
-
-            # Normalize predicted value
             pred_val = pipeline["Predicted_Final_Value"].apply(
                 lambda v: normalize_to_float(v, default=0.0)
             )
-
-            # Normalize predicted win probability
             pred_prob = pipeline["Predicted_Win_Prob"].apply(
                 lambda v: normalize_to_float(v, default=0.5)
             )
-
-            # Multiply safely
-            pipeline_expected_value = (pred_val * pred_prob).sum()
-
+            pipeline_expected_value = float((pred_val * pred_prob).sum())
         else:
             pipeline_expected_value = 0.0
-
 
         reg_counts = (
             grp.explode("Regulatory_Drivers")["Regulatory_Drivers"]
@@ -603,7 +606,11 @@ def build_customer_kpis(df):
     return pd.DataFrame(records)
 
 
-def explain_customer_win_loss(customer_name, df):
+# =========================================================
+# CUSTOMER WIN/LOSS EXPLANATION
+# =========================================================
+
+def explain_customer_win_loss(customer_name: str, df: pd.DataFrame) -> dict:
     cust_data = df[df["Customer Name"] == customer_name].copy()
     if cust_data.empty:
         return {}
@@ -666,6 +673,7 @@ def explain_customer_win_loss(customer_name, df):
         insights.append(
             f"You most frequently win in the '{top_win_domain}' domain with this customer."
         )
+
     if summary["dominant_domains_lost"]:
         top_loss_domain = next(iter(summary["dominant_domains_lost"].keys()))
         if (
@@ -684,42 +692,37 @@ def explain_customer_win_loss(customer_name, df):
             insights.append(
                 f"Wins with this customer are strongly associated with {top_reg_win}-driven projects."
             )
+
     if summary["regulatory_lost"]:
         top_reg_loss = max(
             summary["regulatory_lost"], key=summary["regulatory_lost"].get
         )
         if top_reg_loss != "General":
             insights.append(
-                f"Many losses are linked to {top_reg_loss}-driven projects; review how well your solutions align with that regulator’s controls."
+                f"Many losses are linked to {top_reg_loss}-driven projects; review alignment with that regulator’s controls."
             )
 
     loss_dict = summary.get("dominant_stage_lost", {})
-
     if isinstance(loss_dict, dict) and len(loss_dict) > 0:
         top_loss_stage = next(iter(loss_dict.keys()))
     else:
         top_loss_stage = "No dominant loss stage"
 
     summary["top_loss_stage"] = top_loss_stage
-
     insights.append(
-        f"Most losses happen around the '{top_loss_stage}' stage; investigate what typically goes wrong at this point."
-        )
+        f"Most losses happen around the '{top_loss_stage}' stage; investigate typical blockers at this point."
+    )
 
     summary["insights"] = insights
     return summary
 
 
 # =========================================================
-# SECTOR DETECTION (AUTO-DETECTION IF MISSING)
+# SECTOR DETECTION & IMPLEMENTED CONTROLS
 # =========================================================
 
-def infer_sector(customer_name: str):
-    """
-    Auto-detect customer sector based on name patterns.
-    """
+def infer_sector(customer_name: str) -> str:
     name = str(customer_name).lower()
-
     banking_kw = ["bank", "al rajhi", "riyad", "inma", "samba", "arab national"]
     fintech_kw = ["payment", "fintech", "pay", "wallet"]
     cma_kw = ["capital market", "brokerage", "tadawul", "investment", "trading"]
@@ -742,25 +745,14 @@ def infer_sector(customer_name: str):
         return "Healthcare"
     if any(kw in name for kw in edu_kw):
         return "Education"
-
     return "Private"
 
 
-# =========================================================
-# IMPLEMENTED CONTROLS (LEARNED FROM HISTORICAL WINS)
-# =========================================================
-
-def infer_implemented_controls(df, customer):
-    """
-    Infer implemented controls from previously WON opportunities for that customer.
-    This is approximate but useful:
-    - If customer previously bought SIEM → assume SIEM implemented
-    - If bought EDR → assume EDR present
-    - etc.
-    """
-
-    cust_data = df[(df["Customer Name"] == customer) &
-                   (df["Status_Simplified"] == "Won")].copy()
+def infer_implemented_controls(df: pd.DataFrame, customer: str):
+    cust_data = df[
+        (df["Customer Name"] == customer)
+        & (df["Status_Simplified"] == "Won")
+    ].copy()
 
     if cust_data.empty:
         return []
@@ -796,97 +788,54 @@ def infer_implemented_controls(df, customer):
 
 
 # =========================================================
-# REGULATORY BUSINESS SUMMARY (USED BEFORE FORECAST)
-# =========================================================
-
-def regulatory_business_summary(df):
-    """
-    Builds summary of historical revenue by regulator.
-    """
-    summary_list = []
-
-    for cust, grp in df.groupby("Customer Name"):
-
-        regs = grp.explode("Regulatory_Drivers")["Regulatory_Drivers"].value_counts().to_dict()
-        revenue = grp[grp["Status_Simplified"] == "Won"]["Final Contract Value (SAR)"].sum()
-
-        summary_list.append({
-            "Customer Name": cust,
-            "Regulatory_Driver_Counts": regs,
-            "Historical_Revenue_SAR": revenue,
-        })
-
-    return pd.DataFrame(summary_list)
-
-
-# =========================================================
 # REGULATORY FORECAST ENGINE
 # =========================================================
 
-def build_regulatory_forecast(df):
-    """
-    For each customer:
-    - Infer sector
-    - Map regulator
-    - Required categories
-    - Full control list
-    - Implemented controls
-    - Missing controls
-    - Expected new controls
-    - Estimated new spend
-    """
-
+def build_regulatory_forecast(df: pd.DataFrame) -> pd.DataFrame:
     result_rows = []
 
     for cust, grp in df.groupby("Customer Name"):
-
         sector = infer_sector(cust)
         regulator = SECTOR_REGULATOR_MAP.get(sector, "General")
 
         required_categories = get_regulator_control_categories(regulator)
 
-        # Full list of required controls (all controls inside those categories)
         required_full = []
         for cat in required_categories:
             required_full.extend(CONTROL_LIBRARY.get(cat, []))
-
-        required_full = list(sorted(set(required_full)))
+        required_full = sorted(set(required_full))
 
         implemented = infer_implemented_controls(df, cust)
-
         missing = sorted(set(required_full) - set(implemented))
-
         expected_future = get_expected_new_controls(regulator)
-
         estimated_value = len(missing) * AVERAGE_CONTROL_COST_SAR
 
-        result_rows.append({
-            "Customer Name": cust,
-            "Sector": sector,
-            "Regulator": regulator,
-            "Required_Control_Categories": required_categories,
-            "Required_All_Controls": required_full,
-            "Implemented_Controls": implemented,
-            "Missing_Controls": missing,
-            "Expected_New_Controls": expected_future,
-            "Missing_Control_Count": len(missing),
-            "Expected_Spend_SAR": estimated_value,
-        })
+        result_rows.append(
+            {
+                "Customer Name": cust,
+                "Sector": sector,
+                "Regulator": regulator,
+                "Required_Control_Categories": required_categories,
+                "Required_All_Controls": required_full,
+                "Implemented_Controls": implemented,
+                "Missing_Controls": missing,
+                "Expected_New_Controls": expected_future,
+                "Missing_Control_Count": len(missing),
+                "Expected_Spend_SAR": estimated_value,
+            }
+        )
 
     return pd.DataFrame(result_rows)
 
 
 # =========================================================
-# MAIN ANALYSIS FUNCTION
+# MAIN ANALYSIS PIPELINE
 # =========================================================
 
-def run_full_analysis(df):
-    """
-    Preprocessing, ML predictions, gap detection, KPI calculation, regulatory forecast.
-    """
-    df = df.copy()
+def run_full_analysis(df_raw: pd.DataFrame):
+    df = df_raw.copy()
 
-    # Date parsing
+    # Parse dates
     df["Expected Closing Date ( Deadline)"] = parse_date(
         df["Expected Closing Date ( Deadline)"]
     )
@@ -896,31 +845,24 @@ def run_full_analysis(df):
     df["Last Updated Date"] = parse_date(df["Last Updated Date"])
 
     today = pd.Timestamp.today()
-
     df["days_to_deadline"] = (
         df["Expected Closing Date ( Deadline)"] - today
     ).dt.days
-
-    df["days_since_last_update"] = (
-        today - df["Last Updated Date"]
-    ).dt.days
+    df["days_since_last_update"] = (today - df["Last Updated Date"]).dt.days
 
     df["Status_Simplified"] = df["Opportunity Status"].apply(map_status)
-
-    # Regulatory tag
     df["Regulatory_Drivers"] = df.apply(tag_regulatory_drivers, axis=1)
 
-    # GAP detection
+    # Gap detection
     df = detect_business_gaps(df, today=today)
 
-    # Simplify ML columns
+    # ML Preparation
     ml_df = df.copy()
     ml_df["target_win"] = ml_df["Status_Simplified"].apply(
         lambda x: 1 if x == "Won" else 0
     )
     ml_df["regression_target"] = ml_df["Final Contract Value (SAR)"]
 
-    # ML Classification Model
     features = [
         "Solution Size Type",
         "Opportunity Stage",
@@ -946,10 +888,13 @@ def run_full_analysis(df):
         [("num", num_tf, num_cols), ("cat", cat_tf, cat_cols)]
     )
 
-    clf = Pipeline([
-        ("pre", pre),
-        ("model", RandomForestClassifier(n_estimators=200, random_state=42)),
-    ])
+    # Classification model
+    clf = Pipeline(
+        [
+            ("pre", pre),
+            ("model", RandomForestClassifier(n_estimators=200, random_state=42)),
+        ]
+    )
 
     try:
         X_train, X_test, y_train, y_test = train_test_split(
@@ -958,244 +903,389 @@ def run_full_analysis(df):
         clf.fit(X_train, y_train)
         pred_prob = clf.predict_proba(X)[:, 1]
         df["Predicted_Win_Prob"] = pred_prob
-    except Exception:
+    except Exception as e:
+        if debug_mode:
+            st.warning(f"Classification model failed, using default 0.5. Error: {e}")
         df["Predicted_Win_Prob"] = 0.5
 
-    # ML Regression Model
+    # Regression model
     reg_y = ml_df["regression_target"].fillna(ml_df["Expected Value (SAR)"])
     reg_X = ml_df[features]
 
-    reg = Pipeline([
-        ("pre", pre),
-        ("model", RandomForestRegressor(n_estimators=200, random_state=42)),
-    ])
+    reg = Pipeline(
+        [
+            ("pre", pre),
+            ("model", RandomForestRegressor(n_estimators=200, random_state=42)),
+        ]
+    )
 
     try:
         reg.fit(reg_X, reg_y)
         pred_val = reg.predict(reg_X)
         df["Predicted_Final_Value"] = pred_val
-    except Exception:
+    except Exception as e:
+        if debug_mode:
+            st.warning(
+                f"Regression model failed, using Expected Value instead. Error: {e}"
+            )
         df["Predicted_Final_Value"] = df["Expected Value (SAR)"]
 
-    # Customer KPIs
     customer_kpis = build_customer_kpis(df)
-
-    # Regulatory Forecast
     regulatory_forecast = build_regulatory_forecast(df)
 
     return df, customer_kpis, regulatory_forecast
 
 
 # =========================================================
-# STREAMLIT APPLICATION UI
+# STREAMLIT APP UI
 # =========================================================
 
 st.title("AI-Driven Smart Business Opportunity Analyzer")
 
-uploaded = st.file_uploader("Upload Opportunity Excel/CSV Dataset", type=["xls", "xlsx", "csv"])
+st.markdown(
+    "Upload your anonymised opportunity tracking sheet (Excel/CSV) to generate AI-driven insights."
+)
 
-if uploaded is not None:
+uploaded = st.file_uploader(
+    "Upload Opportunity Excel/CSV Dataset", type=["xls", "xlsx", "csv"]
+)
 
-    df = pd.read_excel(uploaded) if uploaded.name.endswith(("xls", "xlsx")) else pd.read_csv(uploaded)
+if uploaded is None:
+    st.info("👆 Please upload your dataset to start the analysis.")
+    st.stop()
 
-    missing = [c for c in EXPECTED_COLUMNS if c not in df.columns]
-    if missing:
-        st.error(f"Missing columns: {missing}")
-        st.stop()
+# Read file
+if uploaded.name.endswith((".xls", ".xlsx")):
+    df_raw = pd.read_excel(uploaded)
+else:
+    df_raw = pd.read_csv(uploaded)
 
-    df_processed, customer_kpis, regulatory_forecast = run_full_analysis(df)
+missing_cols = [c for c in EXPECTED_COLUMNS if c not in df_raw.columns]
+if missing_cols:
+    st.error(f"The following required columns are missing: {missing_cols}")
+    st.stop()
 
-    tabs = st.tabs([
+df_processed, customer_kpis, regulatory_forecast = run_full_analysis(df_raw)
+
+# Tabs layout
+tabs = st.tabs(
+    [
         "📊 Data Overview",
         "🤖 Opportunities AI Predictions",
         "🧭 Customer Insights",
         "⚖ Regulatory View",
         "📈 Regulatory Revenue Forecast",
-    ])
+    ]
+)
 
-    # =====================================================================
-    # TAB 1 — DATA OVERVIEW
-    # =====================================================================
+# ---------------------------------------------------------
+# TAB 1 – DATA OVERVIEW
+# ---------------------------------------------------------
+with tabs[0]:
+    st.subheader("Dataset Snapshot")
 
-    with tabs[0]:
-        st.subheader("Dataset Summary")
-        st.write(df_processed.head(20))
+    money_cols = ["Expected Value (SAR)", "Final Contract Value (SAR)"]
+    st.dataframe(format_currency_columns(df_processed.head(50), money_cols))
 
-        st.subheader("Value Distribution")
-        fig_val = px.histogram(df_processed, x="Expected Value (SAR)", title="Expected Value Distribution")
-        st.plotly_chart(fig_val, use_container_width=True)
+    # Quick metrics
+    total_opps = len(df_processed)
+    won = (df_processed["Status_Simplified"] == "Won").sum()
+    lost = (df_processed["Status_Simplified"] == "Lost").sum()
+    inprog = (df_processed["Status_Simplified"] == "In Progress").sum()
 
-        fig_fin = px.histogram(df_processed, x="Final Contract Value (SAR)", title="Final Contract Values")
-        st.plotly_chart(fig_fin, use_container_width=True)
+    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    with col_m1:
+        st.metric("Total Opportunities", total_opps)
+    with col_m2:
+        st.metric("Won", won)
+    with col_m3:
+        st.metric("Lost", lost)
+    with col_m4:
+        st.metric("In Progress", inprog)
 
-    # =====================================================================
-    # TAB 2 — OPPORTUNITIES AI
-    # =====================================================================
+    st.markdown("### Value Distributions")
+    c1, c2 = st.columns(2)
 
-    with tabs[1]:
-        st.subheader("Predicted Win Probability Distribution")
-        fig_prob = px.histogram(df_processed, x="Predicted_Win_Prob")
+    with c1:
+        try:
+            fig_val = px.histogram(
+                df_processed,
+                x="Expected Value (SAR)",
+                nbins=30,
+                title="Expected Value Distribution",
+            )
+            st.plotly_chart(fig_val, use_container_width=True)
+        except Exception as e:
+            st.error(f"Could not draw Expected Value histogram: {e}")
+
+    with c2:
+        try:
+            fig_fin = px.histogram(
+                df_processed,
+                x="Final Contract Value (SAR)",
+                nbins=30,
+                title="Final Contract Value Distribution",
+            )
+            st.plotly_chart(fig_fin, use_container_width=True)
+        except Exception as e:
+            st.error(f"Could not draw Final Contract histogram: {e}")
+
+    # Export button
+    st.download_button(
+        "⬇ Download processed dataset (CSV)",
+        data=df_processed.to_csv(index=False).encode("utf-8-sig"),
+        file_name="processed_opportunities.csv",
+        mime="text/csv",
+    )
+
+# ---------------------------------------------------------
+# TAB 2 – OPPORTUNITIES AI PREDICTIONS
+# ---------------------------------------------------------
+with tabs[1]:
+    st.subheader("Predicted Win Probabilities")
+
+    try:
+        fig_prob = px.histogram(
+            df_processed,
+            x="Predicted_Win_Prob",
+            nbins=20,
+            title="Distribution of Predicted Win Probability",
+        )
         st.plotly_chart(fig_prob, use_container_width=True)
+    except Exception as e:
+        st.error(f"Could not draw probability histogram: {e}")
 
-        st.subheader("Expected vs Predicted Final Value")
+    st.subheader("Expected vs Predicted Final Value")
+    try:
         fig_scatter = px.scatter(
-            df_processed, x="Expected Value (SAR)",
+            df_processed,
+            x="Expected Value (SAR)",
             y="Predicted_Final_Value",
             color="Predicted_Win_Prob",
-            hover_data=["Customer Name"],
+            hover_data=["Customer Name", "Opportunity Name"],
+            title="Expected vs Predicted Final Value",
         )
         st.plotly_chart(fig_scatter, use_container_width=True)
+    except Exception as e:
+        st.error(f"Could not draw Expected vs Predicted scatter: {e}")
 
-    # =====================================================================
-    # TAB 3 — CUSTOMER INSIGHTS
-    # =====================================================================
+# ---------------------------------------------------------
+# TAB 3 – CUSTOMER INSIGHTS
+# ---------------------------------------------------------
+with tabs[2]:
+    st.subheader("Customer Portfolio KPIs")
 
-    with tabs[2]:
-        st.subheader("Customer KPIs Overview")
-        st.dataframe(customer_kpis)
+    if not customer_kpis.empty:
+        display_kpis = customer_kpis.copy()
+        display_kpis["Historical_Revenue_SAR"] = display_kpis[
+            "Historical_Revenue_SAR"
+        ].apply(fmt_number)
+        display_kpis["Pipeline_Expected_Revenue_SAR"] = display_kpis[
+            "Pipeline_Expected_Revenue_SAR"
+        ].apply(fmt_number)
+        st.dataframe(display_kpis)
 
-        selected_customer = st.selectbox("Select Customer", customer_kpis["Customer Name"].unique())
+        st.download_button(
+            "⬇ Download customer KPIs (CSV)",
+            data=customer_kpis.to_csv(index=False).encode("utf-8-sig"),
+            file_name="customer_kpis.csv",
+            mime="text/csv",
+        )
+
+        selected_customer = st.selectbox(
+            "Select customer for detailed insights",
+            customer_kpis["Customer Name"].unique(),
+        )
 
         if selected_customer:
-            st.subheader(f"Win/Loss Summary for {selected_customer}")
-            insights = explain_customer_win_loss(selected_customer, df_processed)
-            st.write(insights)
+            summary = explain_customer_win_loss(selected_customer, df_processed)
+            if summary:
+                st.markdown(f"### Win/Loss Overview – {selected_customer}")
 
-    # =====================================================================
-    # TAB 4 — REGULATORY VIEW
-    # =====================================================================
+                cm1, cm2, cm3, cm4 = st.columns(4)
+                with cm1:
+                    st.metric("Total Opps", summary["total_opportunities"])
+                with cm2:
+                    st.metric("Won", summary["won_count"])
+                with cm3:
+                    st.metric("Lost", summary["lost_count"])
+                with cm4:
+                    st.metric(
+                        "Win Rate",
+                        f"{summary['win_rate']*100:.1f}%" if summary["win_rate"] == summary["win_rate"] else "N/A",
+                    )
 
-    with tabs[3]:
-        st.subheader("Regulatory Drivers per Opportunity")
-    
-        # Build regulatory summary safely
+                st.markdown("#### Key Insights")
+                for i in summary["insights"]:
+                    st.write("• " + i)
+
+                # Small charts for domains won/lost
+                cw1, cw2 = st.columns(2)
+                with cw1:
+                    if summary["dominant_domains_won"]:
+                        won_df = (
+                            pd.Series(summary["dominant_domains_won"])
+                            .reset_index()
+                            .rename(columns={"index": "Domain", 0: "Count"})
+                        )
+                        fig_won_dom = px.bar(
+                            won_df,
+                            x="Domain",
+                            y="Count",
+                            title="Top Domains – Won",
+                            text="Count",
+                        )
+                        fig_won_dom.update_traces(textposition="outside")
+                        st.plotly_chart(fig_won_dom, use_container_width=True)
+
+                with cw2:
+                    if summary["dominant_domains_lost"]:
+                        lost_df = (
+                            pd.Series(summary["dominant_domains_lost"])
+                            .reset_index()
+                            .rename(columns={"index": "Domain", 0: "Count"})
+                        )
+                        fig_lost_dom = px.bar(
+                            lost_df,
+                            x="Domain",
+                            y="Count",
+                            title="Top Domains – Lost",
+                            text="Count",
+                        )
+                        fig_lost_dom.update_traces(textposition="outside")
+                        st.plotly_chart(fig_lost_dom, use_container_width=True)
+    else:
+        st.info("No customer-level KPIs available.")
+
+# ---------------------------------------------------------
+# TAB 4 – REGULATORY VIEW
+# ---------------------------------------------------------
+with tabs[3]:
+    st.subheader("Regulatory Drivers Across Opportunities")
+
+    try:
+        reg_count_df = (
+            df_processed.explode("Regulatory_Drivers")["Regulatory_Drivers"]
+            .value_counts()
+            .reset_index()
+            .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
+        )
+    except Exception as e:
+        st.error(f"Error computing regulatory counts: {e}")
+        reg_count_df = pd.DataFrame(columns=["Regulator", "Count"])
+
+    if debug_mode:
+        st.write("DEBUG – reg_count_df:", reg_count_df)
+
+    if reg_count_df.empty:
+        st.warning("No regulatory drivers detected in the dataset.")
+    else:
         try:
-            reg_count_df = (
-                df_processed.explode("Regulatory_Drivers")["Regulatory_Drivers"]
-                .value_counts()
-                .reset_index()
-                .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
+            fig_regs = px.bar(
+                reg_count_df,
+                x="Regulator",
+                y="Count",
+                title="Regulatory Keywords Identified",
+                text="Count",
+                color="Regulator",
             )
+            fig_regs.update_traces(textposition="outside")
+            st.plotly_chart(fig_regs, use_container_width=True)
         except Exception as e:
-            st.error(f"Error computing regulatory counts: {e}")
-            reg_count_df = pd.DataFrame(columns=["Regulator", "Count"])
-    
-        # Debug output
-        st.write("DEBUG: reg_count_df", reg_count_df)
-    
-        # If empty → show message instead of crashing
-        if reg_count_df.empty:
-            st.warning("⚠ No regulatory drivers detected in the dataset.")
-        else:
-            # Ensure correct columns exist
-            if "Regulator" in reg_count_df.columns and "Count" in reg_count_df.columns:
-                fig_regs = px.bar(
-                    reg_count_df,
-                    x="Regulator",
-                    y="Count",
-                    title="Regulatory Keywords Identified",
-                    text="Count",
-                    color="Regulator",
-                )
-                fig_regs.update_traces(textposition="outside")
-                st.plotly_chart(fig_regs, use_container_width=True)
-            else:
-                st.error("❌ reg_count_df missing required columns: 'Regulator' and 'Count'")
+            st.error(f"Could not draw regulatory bar chart: {e}")
 
+# ---------------------------------------------------------
+# TAB 5 – REGULATORY REVENUE FORECAST
+# ---------------------------------------------------------
+with tabs[4]:
+    st.header("Regulatory Revenue Forecast")
 
-    # =====================================================================
-    # TAB 5 — REGULATORY REVENUE FORECAST (FULL HYBRID VIEW)
-    # =====================================================================
-
-    with tabs[4]:
-        st.header("📈 Regulatory Revenue Forecast")
-
+    if regulatory_forecast.empty:
+        st.info("No regulatory forecast could be generated.")
+    else:
         st.subheader("Forecast Table")
-        st.dataframe(regulatory_forecast)
+        display_forecast = regulatory_forecast.copy()
+        display_forecast["Expected_Spend_SAR"] = display_forecast[
+            "Expected_Spend_SAR"
+        ].apply(fmt_number)
+        st.dataframe(display_forecast)
+
+        st.download_button(
+            "⬇ Download regulatory forecast (CSV)",
+            data=regulatory_forecast.to_csv(index=False).encode("utf-8-sig"),
+            file_name="regulatory_forecast.csv",
+            mime="text/csv",
+        )
 
         # ---- High-demand controls (market demand) ----
         st.subheader("🔥 Top Missing Controls Across All Customers")
 
-        missing_exploded = regulatory_forecast.explode("Missing_Controls")
-        missing_counts = (
-            missing_exploded["Missing_Controls"]
-            .value_counts()
-            .reset_index()
-            .rename(columns={"index": "Control", "Missing_Controls": "Count"})
-        )
+        try:
+            missing_exploded = regulatory_forecast.explode("Missing_Controls")
+            missing_exploded = missing_exploded[
+                missing_exploded["Missing_Controls"].notna()
+            ]
+            missing_exploded["Missing_Controls"] = (
+                missing_exploded["Missing_Controls"].astype(str).str.strip()
+            )
 
-       # ---- High-demand controls (market demand) ----
-    st.subheader("🔥 Top Missing Controls Across All Customers")
-    
-    try:
-        # explode missing controls safely
-        missing_exploded = regulatory_forecast.explode("Missing_Controls")
-    
-        # Drop empty or invalid rows
-        missing_exploded = missing_exploded[
-            missing_exploded["Missing_Controls"].notna()
-        ]
-    
-        # Convert all values to clean strings
-        missing_exploded["Missing_Controls"] = (
-            missing_exploded["Missing_Controls"].astype(str).str.strip()
-        )
-    
-        # Build count table safely
-        missing_counts = (
-            missing_exploded["Missing_Controls"]
-            .value_counts()
-            .reset_index()
-            .rename(columns={"index": "Control", "Missing_Controls": "Count"})
-        )
-    
-    except Exception as e:
-        st.error(f"Error analyzing missing controls: {e}")
-        missing_counts = pd.DataFrame(columns=["Control", "Count"])
-    
-    # ---- Now validate before plotting ----
-    if missing_counts.empty or "Control" not in missing_counts.columns:
-        st.warning("⚠ No missing controls found. No demand chart to display.")
-    else:
-        # Take top 20 rows
-        clean_df = missing_counts.head(20).copy()
-    
-        # Ensure Count is numeric
-        clean_df["Count"] = pd.to_numeric(clean_df["Count"], errors="coerce").fillna(0)
-    
-        # Ensure Control is string
-        clean_df["Control"] = clean_df["Control"].astype(str)
-    
-        fig_demand = px.bar(
-            clean_df,
-            x="Control",
-            y="Count",
-            title="Top 20 Security Controls in Global Demand",
-            text="Count",
-            color="Count",
-        )
-        fig_demand.update_traces(textposition="outside")
-        fig_demand.update_layout(xaxis_tickangle=-40)
-        st.plotly_chart(fig_demand, use_container_width=True)
+            missing_counts = (
+                missing_exploded["Missing_Controls"]
+                .value_counts()
+                .reset_index()
+                .rename(columns={"index": "Control", "Missing_Controls": "Count"})
+            )
+        except Exception as e:
+            st.error(f"Error analyzing missing controls: {e}")
+            missing_counts = pd.DataFrame(columns=["Control", "Count"])
 
-        # ---- Detailed Drill-Down per Customer ----
+        if missing_counts.empty or "Control" not in missing_counts.columns:
+            st.warning("⚠ No missing controls found. No demand chart to display.")
+        else:
+            clean_df = missing_counts.head(20).copy()
+            clean_df["Count"] = pd.to_numeric(
+                clean_df["Count"], errors="coerce"
+            ).fillna(0)
+            clean_df["Control"] = clean_df["Control"].astype(str)
+
+            try:
+                fig_demand = px.bar(
+                    clean_df,
+                    x="Control",
+                    y="Count",
+                    title="Top 20 Security Controls in Global Demand",
+                    text="Count",
+                    color="Count",
+                )
+                fig_demand.update_traces(textposition="outside")
+                fig_demand.update_layout(xaxis_tickangle=-40)
+                st.plotly_chart(fig_demand, use_container_width=True)
+            except Exception as e:
+                st.error(f"Could not draw demand bar chart: {e}")
+
+        # ---- Detailed drill-down per customer ----
         st.subheader("🔍 Detailed Regulatory View per Customer")
 
-        selected_customer = st.selectbox("Select Customer", regulatory_forecast["Customer Name"].unique())
+        selected_customer_forecast = st.selectbox(
+            "Select customer", regulatory_forecast["Customer Name"].unique()
+        )
 
-        if selected_customer:
-            row = regulatory_forecast[regulatory_forecast["Customer Name"] == selected_customer].iloc[0]
+        if selected_customer_forecast:
+            row = regulatory_forecast[
+                regulatory_forecast["Customer Name"] == selected_customer_forecast
+            ].iloc[0]
 
-            st.markdown(f"### {selected_customer}")
+            st.markdown(f"### {selected_customer_forecast}")
             st.write(f"**Sector:** {row['Sector']}")
             st.write(f"**Regulator:** {row['Regulator']}")
-            st.write(f"**Expected New Spend (SAR):** {fmt_number(row['Expected_Spend_SAR'])}")
+            st.write(
+                f"**Expected New Spend (SAR):** {fmt_number(row['Expected_Spend_SAR'])}"
+            )
 
-            st.markdown("### Required Control Categories")
+            st.markdown("#### Required Control Categories")
             st.write(row["Required_Control_Categories"])
 
-            # Expander for full detailed lists
-            with st.expander("Full Required Controls (80+ items)"):
+            with st.expander("Full Required Controls"):
                 st.write(row["Required_All_Controls"])
 
             with st.expander("Implemented Controls"):
@@ -1206,5 +1296,3 @@ if uploaded is not None:
 
             with st.expander("Expected New Controls (Upcoming Regulatory Requirements)"):
                 st.write(row["Expected_New_Controls"])
-
-st.success("App Ready 🎉 – Upload your dataset or test your regulatory intelligence.")
