@@ -525,35 +525,24 @@ def build_customer_kpis(df):
         )
 
         pipeline = grp[inprog_mask].copy()
-        if not pipeline.empty:
+if not pipeline.empty:
 
-            # SAFE numeric conversion for Predicted_Final_Value
-            pred_val_raw = pipeline["Predicted_Final_Value"].copy()
+    # Normalize predicted value
+    pred_val = pipeline["Predicted_Final_Value"].apply(
+        lambda v: normalize_to_float(v, default=0.0)
+    )
 
-            pred_val = (
-                pred_val_raw
-                .apply(lambda x: x[0] if isinstance(x, list) else x)  # extract from list
-            )
+    # Normalize predicted win probability
+    pred_prob = pipeline["Predicted_Win_Prob"].apply(
+        lambda v: normalize_to_float(v, default=0.5)
+    )
 
-            pred_val = pd.to_numeric(pred_val, errors="coerce").fillna(
-                pipeline["Expected Value (SAR)"]
-            )
+    # Multiply safely
+    pipeline_expected_value = (pred_val * pred_prob).sum()
 
-            # SAFE numeric conversion for Predicted_Win_Prob
-            pred_prob_raw = pipeline["Predicted_Win_Prob"].copy()
+else:
+    pipeline_expected_value = 0.0
 
-            pred_prob = (
-                pred_prob_raw
-                .apply(lambda x: x[0] if isinstance(x, list) else x)  # extract from list
-            )
-
-            pred_prob = pd.to_numeric(pred_prob, errors="coerce").fillna(0.5)
-
-            # Finally multiply
-            pipeline_expected_value = (pred_val * pred_prob).sum()
-
-        else:
-            pipeline_expected_value = 0.0
 
 
         reg_counts = (
