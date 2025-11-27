@@ -1172,12 +1172,12 @@ with tabs[2]:
 with tabs[3]:
 
     st.header("⚖ Regulatory View")
+    st.subheader("🧠 Smart Regulatory Insights")
     
 # ==============================
 # 🧠 Regulator Insights Section
 # ==============================
-    st.subheader("🧠 Smart Regulatory Insights")
-    
+        
     # 1 — Summary Table
     reg_summary = (
         df_processed.explode("Regulatory_Drivers")["Regulatory_Drivers"]
