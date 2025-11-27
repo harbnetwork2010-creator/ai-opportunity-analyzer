@@ -1197,102 +1197,126 @@ with tabs[3]:
 # ---------------------------------------------------------
 # TAB 5 – REGULATORY REVENUE FORECAST
 # ---------------------------------------------------------
-with tabs[4]:
-    st.header("Regulatory Revenue Forecast")
 
-    if regulatory_forecast.empty:
-        st.info("No regulatory forecast could be generated.")
-    else:
-        st.subheader("Forecast Table")
-        display_forecast = regulatory_forecast.copy()
-        display_forecast["Expected_Spend_SAR"] = display_forecast[
-            "Expected_Spend_SAR"
-        ].apply(fmt_number)
-        st.dataframe(display_forecast)
-
-        st.download_button(
-            "⬇ Download regulatory forecast (CSV)",
-            data=regulatory_forecast.to_csv(index=False).encode("utf-8-sig"),
-            file_name="regulatory_forecast.csv",
-            mime="text/csv",
+    st.subheader("🔍 Detailed Regulatory View per Customer")
+    
+    selected_customer = st.selectbox(
+        "Select Customer",
+        regulatory_forecast["Customer Name"].unique(),
+        key="reg_customer"
+    )
+    
+    if selected_customer:
+    
+        row = regulatory_forecast[
+            regulatory_forecast["Customer Name"] == selected_customer
+        ].iloc[0]
+    
+        # ====== TOP KPI CARDS ======
+        kpi1, kpi2, kpi3 = st.columns(3)
+    
+        kpi1.metric("Sector", row["Sector"])
+        kpi2.metric("Regulator", row["Regulator"])
+        kpi3.metric(
+            "Expected New Spend (SAR)",
+            fmt_number(row["Expected_Spend_SAR"])
         )
-
-        # ---- High-demand controls (market demand) ----
-        st.subheader("🔥 Top Missing Controls Across All Customers")
-
-        try:
-            missing_exploded = regulatory_forecast.explode("Missing_Controls")
-            missing_exploded = missing_exploded[
-                missing_exploded["Missing_Controls"].notna()
-            ]
-            missing_exploded["Missing_Controls"] = (
-                missing_exploded["Missing_Controls"].astype(str).str.strip()
-            )
-
-            missing_counts = (
-                missing_exploded["Missing_Controls"]
-                .value_counts()
-                .reset_index()
-                .rename(columns={"index": "Control", "Missing_Controls": "Count"})
-            )
-        except Exception as e:
-            st.error(f"Error analyzing missing controls: {e}")
-            missing_counts = pd.DataFrame(columns=["Control", "Count"])
-
-        if missing_counts.empty or "Control" not in missing_counts.columns:
-            st.warning("⚠ No missing controls found. No demand chart to display.")
+    
+        st.markdown("---")
+    
+        # ====== DONUT CHART: Implemented vs Missing ======
+        implemented_count = len(row["Implemented_Controls"])
+        missing_count = len(row["Missing_Controls"])
+        total_required = implemented_count + missing_count
+    
+        donut_df = pd.DataFrame({
+            "Status": ["Implemented", "Missing"],
+            "Count": [implemented_count, missing_count]
+        })
+    
+        fig_donut = px.pie(
+            donut_df,
+            values="Count",
+            names="Status",
+            hole=0.55,
+            color="Status",
+            color_discrete_map={
+                "Implemented": "#2ca02c",
+                "Missing": "#d62728"
+            },
+            title="Overall Compliance Readiness"
+        )
+        fig_donut.update_layout(showlegend=True)
+        st.plotly_chart(fig_donut, use_container_width=True)
+    
+        st.markdown("---")
+    
+        # ====== CATEGORY-LEVEL BAR CHART ======
+        categories = row["Required_Control_Categories"]
+    
+        implemented_map = {
+            c: any(cn in c for cn in row["Implemented_Controls"])
+            for c in categories
+        }
+        missing_map = {
+            c: any(cn in c for cn in row["Missing_Controls"])
+            for c in categories
+        }
+    
+        bar_df = pd.DataFrame({
+            "Category": categories,
+            "Implemented": [1 if implemented_map[c] else 0 for c in categories],
+            "Missing": [1 if missing_map[c] else 0 for c in categories],
+        })
+    
+        fig_bar = px.bar(
+            bar_df,
+            x="Category",
+            y=["Implemented", "Missing"],
+            barmode="group",
+            title="Control Readiness by Category",
+        )
+        fig_bar.update_layout(xaxis_tickangle=-40)
+        st.plotly_chart(fig_bar, use_container_width=True)
+    
+        st.markdown("---")
+    
+        # ====== BADGE-STYLE LISTS ======
+    
+        st.markdown("### 🟦 Required Control Categories")
+        for item in row["Required_Control_Categories"]:
+            st.markdown(f"""
+                <span style='background:#e8f0fe;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#174ea6;'>
+                {item}
+                </span>
+            """, unsafe_allow_html=True)
+    
+        st.markdown("### 🟩 Implemented Controls")
+        if len(row["Implemented_Controls"]) == 0:
+            st.info("No implemented controls detected.")
         else:
-            clean_df = missing_counts.head(20).copy()
-            clean_df["Count"] = pd.to_numeric(
-                clean_df["Count"], errors="coerce"
-            ).fillna(0)
-            clean_df["Control"] = clean_df["Control"].astype(str)
-
-            try:
-                fig_demand = px.bar(
-                    clean_df,
-                    x="Control",
-                    y="Count",
-                    title="Top 20 Security Controls in Global Demand",
-                    text="Count",
-                    color="Count",
-                )
-                fig_demand.update_traces(textposition="outside")
-                fig_demand.update_layout(xaxis_tickangle=-40)
-                st.plotly_chart(fig_demand, use_container_width=True)
-            except Exception as e:
-                st.error(f"Could not draw demand bar chart: {e}")
-
-        # ---- Detailed drill-down per customer ----
-        st.subheader("🔍 Detailed Regulatory View per Customer")
-
-        selected_customer_forecast = st.selectbox(
-            "Select customer", regulatory_forecast["Customer Name"].unique()
-        )
-
-        if selected_customer_forecast:
-            row = regulatory_forecast[
-                regulatory_forecast["Customer Name"] == selected_customer_forecast
-            ].iloc[0]
-
-            st.markdown(f"### {selected_customer_forecast}")
-            st.write(f"**Sector:** {row['Sector']}")
-            st.write(f"**Regulator:** {row['Regulator']}")
-            st.write(
-                f"**Expected New Spend (SAR):** {fmt_number(row['Expected_Spend_SAR'])}"
-            )
-
-            st.markdown("#### Required Control Categories")
-            st.write(row["Required_Control_Categories"])
-
-            with st.expander("Full Required Controls"):
-                st.write(row["Required_All_Controls"])
-
-            with st.expander("Implemented Controls"):
-                st.write(row["Implemented_Controls"])
-
-            with st.expander("Missing Controls (High Demand)"):
-                st.write(row["Missing_Controls"])
-
-            with st.expander("Expected New Controls (Upcoming Regulatory Requirements)"):
-                st.write(row["Expected_New_Controls"])
+            for item in row["Implemented_Controls"]:
+                st.markdown(f"""
+                    <span style='background:#e8f5e9;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#2e7d32;'>
+                    {item}
+                    </span>
+                """, unsafe_allow_html=True)
+    
+        st.markdown("### 🟥 Missing Controls (High-Demand)")
+        if len(row["Missing_Controls"]) == 0:
+            st.success("No missing controls. Customer is fully compliant.")
+        else:
+            for item in row["Missing_Controls"]:
+                st.markdown(f"""
+                    <span style='background:#ffebee;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#c62828;'>
+                    {item}
+                    </span>
+                """, unsafe_allow_html=True)
+    
+        st.markdown("### 🟨 Expected New Controls (Upcoming Regulations)")
+        for item in row["Expected_New_Controls"]:
+            st.markdown(f"""
+                <span style='background:#fff8e1;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#ff8f00;'>
+                {item}
+                </span>
+            """, unsafe_allow_html=True)
