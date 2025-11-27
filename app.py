@@ -526,16 +526,30 @@ def build_customer_kpis(df):
 
         pipeline = grp[inprog_mask].copy()
         if not pipeline.empty:
-            # Force numeric values, safely
-            pred_val = pd.to_numeric(
-                pipeline["Predicted_Final_Value"], errors="coerce"
-            ).fillna(pipeline["Expected Value (SAR)"])
 
-            pred_prob = pd.to_numeric(
-                pipeline["Predicted_Win_Prob"], errors="coerce"
-            ).fillna(0.5)
+            # SAFE numeric conversion for Predicted_Final_Value
+            pred_val_raw = pipeline["Predicted_Final_Value"].copy()
 
-            # Multiply safely
+            pred_val = (
+                pred_val_raw
+                .apply(lambda x: x[0] if isinstance(x, list) else x)  # extract from list
+            )
+
+            pred_val = pd.to_numeric(pred_val, errors="coerce").fillna(
+                pipeline["Expected Value (SAR)"]
+            )
+
+            # SAFE numeric conversion for Predicted_Win_Prob
+            pred_prob_raw = pipeline["Predicted_Win_Prob"].copy()
+
+            pred_prob = (
+                pred_prob_raw
+                .apply(lambda x: x[0] if isinstance(x, list) else x)  # extract from list
+            )
+
+            pred_prob = pd.to_numeric(pred_prob, errors="coerce").fillna(0.5)
+
+            # Finally multiply
             pipeline_expected_value = (pred_val * pred_prob).sum()
 
         else:
