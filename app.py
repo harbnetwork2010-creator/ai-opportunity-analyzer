@@ -1170,6 +1170,10 @@ with tabs[3]:
             .reset_index()
             .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
         )
+
+        # Ensure correct column names
+        reg_count_df.columns = ["Regulator", "Count"]
+        
     except Exception as e:
         st.error(f"Error computing regulatory counts: {e}")
         reg_count_df = pd.DataFrame(columns=["Regulator", "Count"])
