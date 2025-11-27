@@ -1172,8 +1172,7 @@ with tabs[2]:
 with tabs[3]:
 
     st.header("⚖ Regulatory View")
-    st.subheader("🛠 Debug View (temporary)")
-
+    
 try:
     tmp = df_processed[["Regulatory_Drivers"]].copy()
     tmp["Exploded"] = tmp["Regulatory_Drivers"].explode()
