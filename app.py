@@ -1188,13 +1188,14 @@ with tabs[3]:
         .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
     )
 
-    # Ensure numeric count
+    # Force Count numeric
     reg_summary["Count"] = pd.to_numeric(reg_summary["Count"], errors="coerce").fillna(0)
 
     total = reg_summary["Count"].sum() or 1
     reg_summary["Percentage"] = ((reg_summary["Count"] / total) * 100).round(1).astype(str) + "%"
 
-    st.dataframe(reg_summary, use_container_width=True)
+    st.subheader("🔎 Regulator Detection Summary")
+    st.dataframe(reg_summary)
 
     # ============================================================
     # 2️⃣ SMART INTERPRETATION
