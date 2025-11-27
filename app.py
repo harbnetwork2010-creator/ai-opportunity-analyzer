@@ -1066,16 +1066,42 @@ if uploaded is not None:
     # =====================================================================
 
     with tabs[3]:
-        st.subheader("Regulatory Drivers per Opportunity")
+    st.subheader("Regulatory Drivers per Opportunity")
+
+    # Build regulatory summary safely
+    try:
         reg_count_df = (
             df_processed.explode("Regulatory_Drivers")["Regulatory_Drivers"]
             .value_counts()
             .reset_index()
             .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
         )
+    except Exception as e:
+        st.error(f"Error computing regulatory counts: {e}")
+        reg_count_df = pd.DataFrame(columns=["Regulator", "Count"])
 
-        fig_regs = px.bar(reg_count_df, x="Regulator", y="Count", title="Regulatory Keywords Identified")
-        st.plotly_chart(fig_regs, use_container_width=True)
+    # Debug output
+    st.write("DEBUG: reg_count_df", reg_count_df)
+
+    # If empty → show message instead of crashing
+    if reg_count_df.empty:
+        st.warning("⚠ No regulatory drivers detected in the dataset.")
+    else:
+        # Ensure correct columns exist
+        if "Regulator" in reg_count_df.columns and "Count" in reg_count_df.columns:
+            fig_regs = px.bar(
+                reg_count_df,
+                x="Regulator",
+                y="Count",
+                title="Regulatory Keywords Identified",
+                text="Count",
+                color="Regulator",
+            )
+            fig_regs.update_traces(textposition="outside")
+            st.plotly_chart(fig_regs, use_container_width=True)
+        else:
+            st.error("❌ reg_count_df missing required columns: 'Regulator' and 'Count'")
+
 
     # =====================================================================
     # TAB 5 — REGULATORY REVENUE FORECAST (FULL HYBRID VIEW)
