@@ -1172,6 +1172,7 @@ with tabs[2]:
 with tabs[3]:
 
     st.header("⚖ Regulatory View")
+    st.subheader("🛠 Debug View (temporary)")
 
     # ============================================================
     # Create regulator dataframe safely
