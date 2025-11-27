@@ -693,14 +693,14 @@ def explain_customer_win_loss(customer_name, df):
                 f"Many losses are linked to {top_reg_loss}-driven projects; review how well your solutions align with that regulator’s controls."
             )
 
-    if summary["dominant_stage_lost"]:
-        # Handle case where there are no lost opportunities
-        dominant_loss_dict = iter.summary.get("dominant_stage_lost", {})
+  loss_dict = summary.get("dominant_stage_lost", {})
 
-        if dominant_loss_dict and len(dominant_loss_dict) > 0:
-            top_loss_stage = next(iter(dominant_loss_dict.keys()))
-        else:
-            top_loss_stage = "No dominant loss stage"
+    if isinstance(loss_dict, dict) and len(loss_dict) > 0:
+        top_loss_stage = next(iter(loss_dict.keys()))
+    else:
+        top_loss_stage = "No dominant loss stage"
+
+    summary["top_loss_stage"] = top_loss_stage
 
         insights.append(
             f"Most losses happen around the '{top_loss_stage}' stage; investigate what typically goes wrong at this point."
