@@ -1,5 +1,6 @@
 import io
 from datetime import datetime
+
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -17,77 +18,25 @@ from sklearn.impute import SimpleImputer
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
 
-
-# PAGE CONFIGURATION – EXECUTIVE DARK THEME
+# =========================================================
+# STREAMLIT PAGE CONFIG & GLOBAL SETTINGS
+# =========================================================
 
 st.set_page_config(
     page_title="AI-Driven Smart Business Opportunity Analyzer",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# GLOBAL PLOTLY THEME
+# Use a nice dark theme for Plotly
 px.defaults.template = "plotly_dark"
 
 
-# GLOBAL NUMBER FORMATTER
-
-def fmt(x):
-    """Format numbers with commas and 2 decimals."""
-    try:
-        return f"{float(x):,.2f}"
-    except:
-        return x
-
-
-# IMPROVED BUSINESS-GAP CATEGORY EXTRACTOR
-
-def categorize_gap(reason):
-    if pd.isna(reason) or reason == "":
-        return "No Gap"
-
-    reason = reason.lower()
-
-    if "deadline" in reason:
-        return "Deadline Issues"
-    if "proposal" in reason:
-        return "Missing Proposal"
-    if "not updated" in reason:
-        return "Stale Opportunity"
-    if "deviation" in reason:
-        return "Value Mismatch"
-    if "high-value" in reason:
-        return "High-Value Risk"
-    return "Other"
-
-
-# EXPECTED COLUMNS + REGULATORY TAGGING
-
-EXPECTED_COLUMNS = [...]
-REGULATORY_KEYWORDS = {...}
-
-
-
-
-# STREAMLIT PAGE CONFIG
-
-
-st.set_page_config(
-    page_title="AI-Driven Smart Business Opportunity Analyzer",
-    layout="wide",
-)
-
-st.title("AI-Driven Smart Business Opportunity Analyzer")
-st.write(
-    "Upload your **opportunity tracking sheet** (Excel/CSV). "
-    "The app will analyse opportunities, train ML models, and generate insights per customer and regulator."
-)
-
-
-
+# =========================================================
 # HELPER FUNCTIONS
-
+# =========================================================
 
 EXPECTED_COLUMNS = [
     "Opportunity ID",
@@ -113,16 +62,33 @@ EXPECTED_COLUMNS = [
 
 REGULATORY_KEYWORDS = {
     "NCA": [
-        "nca", "national cybersecurity", "ecc", "essential cyber", "cst",
-        "cybersecurity framework", "national cyber"
+        "nca",
+        "national cybersecurity",
+        "ecc",
+        "essential cyber",
+        "cst",
+        "cybersecurity framework",
+        "national cyber",
     ],
     "SAMA": [
-        "sama", "bank", "core banking", "payment", "pos", "cards",
-        "digital banking", "finance", "financial"
+        "sama",
+        "bank",
+        "core banking",
+        "payment",
+        "pos",
+        "cards",
+        "digital banking",
+        "finance",
+        "financial",
     ],
     "CMA": [
-        "cma", "capital market", "brokerage", "trading", "investment",
-        "asset management", "securities"
+        "cma",
+        "capital market",
+        "brokerage",
+        "trading",
+        "investment",
+        "asset management",
+        "securities",
     ],
 }
 
@@ -160,6 +126,43 @@ def tag_regulatory_drivers(row):
     return drivers
 
 
+def fmt_number(x):
+    """Format number with commas and 2 decimals for display."""
+    try:
+        return f"{float(x):,.2f}"
+    except Exception:
+        return x
+
+
+def format_currency_columns(df, columns):
+    """Return a copy of df with formatted currency columns (for display only)."""
+    df_disp = df.copy()
+    for c in columns:
+        if c in df_disp.columns:
+            df_disp[c] = df_disp[c].apply(lambda v: fmt_number(v) if pd.notna(v) else "")
+    return df_disp
+
+
+def categorize_gap(reason):
+    """High-level category for each gap reason."""
+    if pd.isna(reason) or not str(reason).strip():
+        return "No Gap"
+
+    text = str(reason).lower()
+
+    if "high-value opportunity close to deadline" in text:
+        return "Deadline Risk (High Value)"
+    if "no proposal submission date" in text:
+        return "Missing Proposal"
+    if "not updated for more than 30 days" in text:
+        return "Stale Opportunity"
+    if "deviation between expected and final contract value" in text:
+        return "Value Mismatch"
+    if "deadline reached/passed" in text:
+        return "Deadline Passed"
+    return "Other"
+
+
 def detect_business_gaps(df, today=None):
     if today is None:
         today = pd.Timestamp.today()
@@ -173,7 +176,7 @@ def detect_business_gaps(df, today=None):
         # Rule 1: High value, near deadline, still in progress
         ev = row.get("Expected Value (SAR)", np.nan)
         try:
-            high_value = pd.notna(ev) and ev > 100000  # adjust threshold
+            high_value = pd.notna(ev) and ev > 100000  # adjustable threshold
         except Exception:
             high_value = False
 
@@ -222,6 +225,7 @@ def detect_business_gaps(df, today=None):
 
     data["Gap_Reason"] = reasons
     data["Gap_Flag"] = data["Gap_Reason"].apply(lambda x: 1 if x else 0)
+    data["Gap_Category"] = data["Gap_Reason"].apply(categorize_gap)
     return data
 
 
@@ -310,10 +314,10 @@ def explain_customer_win_loss(customer_name, df):
     closed = won_count + lost_count
     win_rate = won_count / closed if closed > 0 else np.nan
 
-    def top_counts(df, col, n=5):
-        if col not in df.columns or df.empty:
+    def top_counts(df_in, col, n=5):
+        if col not in df_in.columns or df_in.empty:
             return {}
-        return df[col].value_counts().head(n).to_dict()
+        return df_in[col].value_counts().head(n).to_dict()
 
     summary = {
         "customer_name": customer_name,
@@ -330,10 +334,10 @@ def explain_customer_win_loss(customer_name, df):
         "dominant_stage_lost": top_counts(lost, "Opportunity Stage"),
     }
 
-    def reg_summary(df):
-        if df.empty:
+    def reg_summary(df_in):
+        if df_in.empty:
             return {}
-        exploded = df.explode("Regulatory_Drivers")
+        exploded = df_in.explode("Regulatory_Drivers")
         return exploded["Regulatory_Drivers"].value_counts().to_dict()
 
     summary["regulatory_won"] = reg_summary(won)
@@ -439,9 +443,9 @@ def regulatory_business_summary(df):
     return pd.DataFrame(records)
 
 
-
+# =========================================================
 # MAIN ANALYSIS PIPELINE (CACHED)
-
+# =========================================================
 
 @st.cache_data(show_spinner=True)
 def run_full_analysis(uploaded_bytes, filename):
@@ -455,7 +459,7 @@ def run_full_analysis(uploaded_bytes, filename):
     df = df_raw.copy()
     df.columns = [c.strip() for c in df.columns]
 
-    # Warn about missing expected columns (for info only)
+    # Missing expected columns (for info only)
     missing_cols = [c for c in EXPECTED_COLUMNS if c not in df.columns]
 
     # Parse dates
@@ -503,9 +507,9 @@ def run_full_analysis(uploaded_bytes, filename):
     else:
         df["Status_Simplified"] = np.nan
 
-   
-    # Classification model
-    
+    # --------------------------
+    # Classification model (predict Won/Lost/In Progress)
+    # --------------------------
     classification_features = [
         "Opportunity Source",
         "Domain",
@@ -523,10 +527,7 @@ def run_full_analysis(uploaded_bytes, filename):
     df["Predicted_Status"] = np.nan
     df["Predicted_Win_Prob"] = np.nan
 
-    if (
-        not cls_df.empty
-        and cls_df["Status_Simplified"].nunique() >= 2
-    ):
+    if not cls_df.empty and cls_df["Status_Simplified"].nunique() >= 2:
         X_cls = cls_df[classification_features]
         y_cls = cls_df["Status_Simplified"]
 
@@ -584,21 +585,19 @@ def run_full_analysis(uploaded_bytes, filename):
 
         # Metrics
         y_pred_test = cls_pipeline.predict(X_test)
-        from sklearn.metrics import accuracy_score, f1_score
-
         accuracy = accuracy_score(y_test, y_pred_test)
         f1 = f1_score(y_test, y_pred_test, average="macro", zero_division=0)
     else:
         accuracy = np.nan
         f1 = np.nan
 
-  
-    # Regression model
-    
+    # --------------------------
+    # Regression model (predict final value)
+    # --------------------------
     df["Predicted_Final_Value"] = np.nan
     if "Final Contract Value (SAR)" in df.columns:
         reg_df = df.dropna(subset=["Final Contract Value (SAR)"]).copy()
-        regression_features = classification_features  # reuse
+        regression_features = classification_features
 
         if not reg_df.empty:
             X_reg = reg_df[regression_features]
@@ -647,8 +646,6 @@ def run_full_analysis(uploaded_bytes, filename):
             preds_reg = reg_pipeline.predict(X_all_reg)
             df.loc[mask_valid_r, "Predicted_Final_Value"] = preds_reg
 
-            from sklearn.metrics import mean_squared_error, r2_score
-
             y_pred_r = reg_pipeline.predict(X_test_r)
             rmse = np.sqrt(mean_squared_error(y_test_r, y_pred_r))
             r2 = r2_score(y_test_r, y_pred_r)
@@ -659,9 +656,9 @@ def run_full_analysis(uploaded_bytes, filename):
         rmse = np.nan
         r2 = np.nan
 
-  
+    # --------------------------
     # Clustering
-    
+    # --------------------------
     cluster_features = [
         "Expected Value (SAR)",
         "Final Contract Value (SAR)",
@@ -686,7 +683,7 @@ def run_full_analysis(uploaded_bytes, filename):
         lambda x: x[0] if isinstance(x, list) and x else "General"
     )
 
-    # Business gaps
+    # Business gaps & categories
     df = detect_business_gaps(df, today=today)
 
     # Customer KPIs & regulatory summary
@@ -704,9 +701,15 @@ def run_full_analysis(uploaded_bytes, filename):
     return df, customer_kpis, reg_business, metrics
 
 
-
+# =========================================================
 # FILE UPLOAD & MAIN UI
+# =========================================================
 
+st.title("AI-Driven Smart Business Opportunity Analyzer")
+st.write(
+    "Upload your **opportunity tracking sheet** (Excel/CSV). "
+    "The app will analyse opportunities, train ML models, and generate insights per customer and regulator."
+)
 
 uploaded_file = st.file_uploader(
     "Upload Opportunity Excel/CSV", type=["xlsx", "xls", "csv"]
@@ -727,8 +730,9 @@ with st.spinner("Running AI analysis on your opportunities..."):
 
 st.success("Analysis complete.")
 
-
+# =========================================================
 # HIGH-LEVEL METRICS
+# =========================================================
 
 col1, col2, col3, col4 = st.columns(4)
 total_opps = len(df_pred)
@@ -760,13 +764,18 @@ if metrics["missing_columns"]:
         f"Missing expected columns in uploaded file: {metrics['missing_columns']}"
     )
 
+# =========================================================
 # TABS FOR DETAILED VIEWS
+# =========================================================
 
 tab_overview, tab_opps, tab_customers, tab_reg = st.tabs(
     ["📊 Data Overview", "🎯 Opportunities AI", "🤝 Customer Insights", "⚖ Regulatory View"]
 )
 
-# --- TAB 1: OVERVIEW ---
+# =========================================================
+# TAB 1: OVERVIEW
+# =========================================================
+
 with tab_overview:
     st.subheader("Business Overview Dashboard")
 
@@ -776,7 +785,6 @@ with tab_overview:
     with colA:
         st.markdown("**Opportunities by Status (Count)**")
 
-        # Build a clean dataframe: Status + Count
         status_counts = (
             df_pred["Status_Simplified"]
             .fillna("Unknown")
@@ -813,16 +821,17 @@ with tab_overview:
                 },
                 text="Expected Value (SAR)",
             )
-            fig_status_value.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+            fig_status_value.update_traces(
+                texttemplate="%{text:,.0f}", textposition="outside"
+            )
             st.plotly_chart(fig_status_value, use_container_width=True)
 
-    # Short textual insight
     if "Expected Value (SAR)" in df_pred.columns:
         total_expected = df_pred["Expected Value (SAR)"].sum()
         median_expected = df_pred["Expected Value (SAR)"].median()
         st.markdown(
-            f"- **Total expected pipeline**: **{total_expected:,.0f} SAR**  \n"
-            f"- **Median deal size**: **{median_expected:,.0f} SAR**  \n"
+            f"- **Total expected pipeline**: **{fmt_number(total_expected)} SAR**  \n"
+            f"- **Median deal size**: **{fmt_number(median_expected)} SAR**  \n"
             f"- The charts above show **how many deals** you have per status and "
             f"**where most of your expected revenue is concentrated**."
         )
@@ -831,7 +840,6 @@ with tab_overview:
 
     # ---------- Value Distributions ----------
     st.markdown("### Opportunity Value Distributions")
-
     col1, col2 = st.columns(2)
 
     with col1:
@@ -890,7 +898,9 @@ with tab_overview:
             },
             text="Pipeline_Expected_Revenue_SAR",
         )
-        fig_cust.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+        fig_cust.update_traces(
+            texttemplate="%{text:,.0f}", textposition="outside"
+        )
         st.plotly_chart(fig_cust, use_container_width=True)
         st.caption(
             "These are the customers where the **future opportunity pipeline is strongest** "
@@ -901,15 +911,94 @@ with tab_overview:
 
     st.markdown("---")
 
-    # ---------- Gaps Detected ----------
+    # ---------- Gaps Detected (PROFESSIONAL VISUALS) ----------
     st.markdown("### Opportunities with Detected Business Gaps")
 
-    gap_count = df_pred["Gap_Flag"].sum()
+    gap_df = df_pred[df_pred["Gap_Flag"] == 1].copy()
+    gap_count = len(gap_df)
     st.write(f"Number of opportunities with detected gaps: **{int(gap_count)}**")
 
-    with st.expander("Show opportunities with gaps (table)"):
-        st.dataframe(
-            df_pred[df_pred["Gap_Flag"] == 1][
+    if gap_count > 0:
+        # Ensure Gap_Category exists (safety)
+        if "Gap_Category" not in gap_df.columns:
+            gap_df["Gap_Category"] = gap_df["Gap_Reason"].apply(categorize_gap)
+
+        # 1) Bar chart: number of gaps by category
+        gap_counts = (
+            gap_df["Gap_Category"]
+            .value_counts()
+            .rename_axis("Gap_Category")
+            .reset_index(name="Count")
+        )
+
+        # 2) Value impact by gap category (expected value)
+        if "Expected Value (SAR)" in gap_df.columns:
+            gap_value = (
+                gap_df.groupby("Gap_Category")["Expected Value (SAR)"]
+                .sum()
+                .reset_index()
+            )
+        else:
+            gap_value = pd.DataFrame(columns=["Gap_Category", "Expected Value (SAR)"])
+
+        g1, g2 = st.columns(2)
+
+        with g1:
+            st.markdown("**Gap frequency by category**")
+            fig_gap_count = px.bar(
+                gap_counts,
+                x="Gap_Category",
+                y="Count",
+                text="Count",
+                labels={"Gap_Category": "Gap Category", "Count": "Number of opportunities"},
+            )
+            fig_gap_count.update_traces(textposition="outside")
+            fig_gap_count.update_layout(xaxis_tickangle=-35)
+            st.plotly_chart(fig_gap_count, use_container_width=True)
+
+        with g2:
+            st.markdown("**Total expected value at risk by gap category (SAR)**")
+            if not gap_value.empty:
+                fig_gap_val = px.bar(
+                    gap_value,
+                    x="Gap_Category",
+                    y="Expected Value (SAR)",
+                    text="Expected Value (SAR)",
+                    labels={
+                        "Gap_Category": "Gap Category",
+                        "Expected Value (SAR)": "Expected value at risk (SAR)",
+                    },
+                )
+                fig_gap_val.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+                fig_gap_val.update_layout(xaxis_tickangle=-35)
+                st.plotly_chart(fig_gap_val, use_container_width=True)
+            else:
+                st.info("No expected value data available for gaps.")
+
+        # 3) Heatmap: Gap category vs Opportunity Stage
+        st.markdown("**Gap heatmap by opportunity stage**")
+        if "Opportunity Stage" in gap_df.columns:
+            heat_data = (
+                gap_df.groupby(["Gap_Category", "Opportunity Stage"])
+                .size()
+                .reset_index(name="Count")
+            )
+            fig_heat = px.density_heatmap(
+                heat_data,
+                x="Opportunity Stage",
+                y="Gap_Category",
+                z="Count",
+                color_continuous_scale="Reds",
+            )
+            fig_heat.update_layout(xaxis_tickangle=-35)
+            st.plotly_chart(fig_heat, use_container_width=True)
+        else:
+            st.info("No 'Opportunity Stage' column available for gap heatmap.")
+
+        # Detailed table (formatted money)
+        money_cols = ["Expected Value (SAR)"]
+        gap_display = format_currency_columns(
+            gap_df[
                 [
                     "Opportunity ID",
                     "Opportunity Name",
@@ -918,17 +1007,28 @@ with tab_overview:
                     "Expected Value (SAR)",
                     "days_to_deadline",
                     "days_since_last_update",
+                    "Gap_Category",
                     "Gap_Reason",
                 ]
-            ]
+            ],
+            money_cols,
         )
 
+        with st.expander("Show opportunities with gaps (detailed table)"):
+            st.dataframe(gap_display)
+
+    else:
+        st.info("No gaps detected based on current rules.")
+
     with st.expander("Show raw dataset (first 200 rows)"):
-        st.dataframe(df_pred.head(200))
+        money_cols = ["Expected Value (SAR)", "Final Contract Value (SAR)"]
+        st.dataframe(format_currency_columns(df_pred.head(200), money_cols))
 
 
+# =========================================================
+# TAB 2: OPPORTUNITIES AI
+# =========================================================
 
-# --- TAB 2: OPPORTUNITIES AI ---
 with tab_opps:
     st.subheader("Opportunity-Level Predictions and Insights")
 
@@ -955,13 +1055,19 @@ with tab_opps:
         "Primary_Regulatory_Driver",
         "Opportunity_Cluster",
         "Gap_Flag",
+        "Gap_Category",
         "Gap_Reason",
     ]
     cols_to_show = [c for c in cols_to_show if c in filtered.columns]
 
-    st.dataframe(filtered[cols_to_show].sort_values(
-        by="Predicted_Win_Prob", ascending=False
-    ))
+    money_cols = ["Expected Value (SAR)", "Final Contract Value (SAR)", "Predicted_Final_Value"]
+    filtered_display = format_currency_columns(filtered[cols_to_show], money_cols)
+
+    st.dataframe(
+        filtered_display.sort_values(
+            by="Predicted_Win_Prob", ascending=False
+        )
+    )
 
     st.download_button(
         "Download opportunities with predictions (CSV)",
@@ -971,7 +1077,10 @@ with tab_opps:
     )
 
 
-# --- TAB 3: CUSTOMER INSIGHTS ---
+# =========================================================
+# TAB 3: CUSTOMER INSIGHTS
+# =========================================================
+
 with tab_customers:
     st.subheader("Per-Customer Analytics & Explanations")
 
@@ -984,17 +1093,20 @@ with tab_customers:
         )
 
         st.subheader("Top Customers by Expected Pipeline Revenue")
-        st.dataframe(
-            customer_kpis_sorted[
-                [
-                    "Customer Name",
-                    "Win_Rate",
-                    "Historical_Revenue_SAR",
-                    "Pipeline_Expected_Revenue_SAR",
-                    "Engagement_Score",
-                ]
-            ].head(20)
+        cust_display = customer_kpis_sorted[
+            [
+                "Customer Name",
+                "Win_Rate",
+                "Historical_Revenue_SAR",
+                "Pipeline_Expected_Revenue_SAR",
+                "Engagement_Score",
+            ]
+        ].copy()
+        cust_display = format_currency_columns(
+            cust_display,
+            ["Historical_Revenue_SAR", "Pipeline_Expected_Revenue_SAR"],
         )
+        st.dataframe(cust_display.head(20))
 
         cust_names = sorted(customer_kpis["Customer Name"].unique().tolist())
         selected_customer = st.selectbox("Select a customer", options=cust_names)
@@ -1021,27 +1133,34 @@ with tab_customers:
                 st.write(f"- {ins}")
 
             st.markdown("**This customer's opportunities:**")
-            st.dataframe(
-                df_pred[df_pred["Customer Name"] == selected_customer][
-                    [
-                        "Opportunity ID",
-                        "Opportunity Name",
-                        "Opportunity Stage",
-                        "Status_Simplified",
-                        "Predicted_Status",
-                        "Predicted_Win_Prob",
-                        "Expected Value (SAR)",
-                        "Final Contract Value (SAR)",
-                        "Predicted_Final_Value",
-                        "Primary_Regulatory_Driver",
-                        "Gap_Flag",
-                        "Gap_Reason",
-                    ]
+            cust_opps = df_pred[df_pred["Customer Name"] == selected_customer][
+                [
+                    "Opportunity ID",
+                    "Opportunity Name",
+                    "Opportunity Stage",
+                    "Status_Simplified",
+                    "Predicted_Status",
+                    "Predicted_Win_Prob",
+                    "Expected Value (SAR)",
+                    "Final Contract Value (SAR)",
+                    "Predicted_Final_Value",
+                    "Primary_Regulatory_Driver",
+                    "Gap_Flag",
+                    "Gap_Category",
+                    "Gap_Reason",
                 ]
+            ]
+            cust_opps_display = format_currency_columns(
+                cust_opps,
+                ["Expected Value (SAR)", "Final Contract Value (SAR)", "Predicted_Final_Value"],
             )
+            st.dataframe(cust_opps_display)
 
 
-# --- TAB 4: REGULATORY VIEW ---
+# =========================================================
+# TAB 4: REGULATORY VIEW
+# =========================================================
+
 with tab_reg:
     st.subheader("Business Driven by NCA / SAMA / CMA / General")
 
@@ -1056,9 +1175,15 @@ with tab_reg:
             reg_business["Regulatory_Driver"] == reg_filter
         ]
 
+        reg_display = reg_filtered.copy()
+        reg_display = format_currency_columns(
+            reg_display,
+            ["Historical_Revenue_SAR", "Expected_Pipeline_Revenue_SAR"],
+        )
+
         st.write(f"**{reg_filter} - Historical and Expected Revenue by Customer**")
         st.dataframe(
-            reg_filtered.sort_values(
+            reg_display.sort_values(
                 by="Expected_Pipeline_Revenue_SAR", ascending=False
             ).head(50)
         )
