@@ -1176,52 +1176,52 @@ with tabs[3]:
 # ==============================
 # 🧠 Regulator Insights Section
 # ==============================
-st.subheader("🧠 Smart Regulatory Insights")
-
-# 1 — Summary Table
-reg_summary = (
-    df_processed.explode("Regulatory_Drivers")["Regulatory_Drivers"]
-    .value_counts()
-    .reset_index()
-    .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
-)
-reg_summary["Percentage"] = (
-    (reg_summary["Count"] / reg_summary["Count"].sum()) * 100
-).round(1).astype(str) + "%"
-
-st.write("### 🔍 Regulator Detection Summary")
-st.dataframe(reg_summary)
-
-# 2 — Automated Insight
-unique_regs = df_processed["Regulatory_Drivers"].explode().unique()
-st.write("### 🧠 Interpretation")
-
-if list(unique_regs) == ["General"]:
-    st.info("""
-    **All detected regulators are 'General'.**
-
-    This means:
-    - No NCA cybersecurity terms were detected  
-    - No SAMA banking/financial terminology appeared  
-    - No CMA investment/trading terminology found  
-    - Opportunities contain no regulator-specific keywords
-
-    To improve accuracy:
-    Add more descriptive opportunity details mentioning:
-    - Compliance frameworks (NCA ECC, SAMA CSF)
-    - Banking/financial systems
-    - Capital market systems
-    """)
-else:
-    st.success(f"Detected regulators: {', '.join(unique_regs)}")
-
-# 3 — Keyword Coverage
-st.write("### 📚 Regulatory Keyword Coverage")
-keyword_coverage = (
-    df_processed["Regulatory_Drivers"].explode().value_counts().reset_index()
-    .rename(columns={"index": "Keyword", "Regulatory_Drivers": "Frequency"})
-)
-st.dataframe(keyword_coverage)
+    st.subheader("🧠 Smart Regulatory Insights")
+    
+    # 1 — Summary Table
+    reg_summary = (
+        df_processed.explode("Regulatory_Drivers")["Regulatory_Drivers"]
+        .value_counts()
+        .reset_index()
+        .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
+    )
+    reg_summary["Percentage"] = (
+        (reg_summary["Count"] / reg_summary["Count"].sum()) * 100
+    ).round(1).astype(str) + "%"
+    
+    st.write("### 🔍 Regulator Detection Summary")
+    st.dataframe(reg_summary)
+    
+    # 2 — Automated Insight
+    unique_regs = df_processed["Regulatory_Drivers"].explode().unique()
+    st.write("### 🧠 Interpretation")
+    
+    if list(unique_regs) == ["General"]:
+        st.info("""
+        **All detected regulators are 'General'.**
+    
+        This means:
+        - No NCA cybersecurity terms were detected  
+        - No SAMA banking/financial terminology appeared  
+        - No CMA investment/trading terminology found  
+        - Opportunities contain no regulator-specific keywords
+    
+        To improve accuracy:
+        Add more descriptive opportunity details mentioning:
+        - Compliance frameworks (NCA ECC, SAMA CSF)
+        - Banking/financial systems
+        - Capital market systems
+        """)
+    else:
+        st.success(f"Detected regulators: {', '.join(unique_regs)}")
+    
+    # 3 — Keyword Coverage
+    st.write("### 📚 Regulatory Keyword Coverage")
+    keyword_coverage = (
+        df_processed["Regulatory_Drivers"].explode().value_counts().reset_index()
+        .rename(columns={"index": "Keyword", "Regulatory_Drivers": "Frequency"})
+    )
+    st.dataframe(keyword_coverage)
 
 
 
