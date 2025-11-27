@@ -1124,12 +1124,55 @@ if uploaded is not None:
             .rename(columns={"index": "Control", "Missing_Controls": "Count"})
         )
 
+       # ---- High-demand controls (market demand) ----
+    st.subheader("🔥 Top Missing Controls Across All Customers")
+    
+    try:
+        # explode missing controls safely
+        missing_exploded = regulatory_forecast.explode("Missing_Controls")
+    
+        # Drop empty or invalid rows
+        missing_exploded = missing_exploded[
+            missing_exploded["Missing_Controls"].notna()
+        ]
+    
+        # Convert all values to clean strings
+        missing_exploded["Missing_Controls"] = (
+            missing_exploded["Missing_Controls"].astype(str).str.strip()
+        )
+    
+        # Build count table safely
+        missing_counts = (
+            missing_exploded["Missing_Controls"]
+            .value_counts()
+            .reset_index()
+            .rename(columns={"index": "Control", "Missing_Controls": "Count"})
+        )
+    
+    except Exception as e:
+        st.error(f"Error analyzing missing controls: {e}")
+        missing_counts = pd.DataFrame(columns=["Control", "Count"])
+    
+    # ---- Now validate before plotting ----
+    if missing_counts.empty or "Control" not in missing_counts.columns:
+        st.warning("⚠ No missing controls found. No demand chart to display.")
+    else:
+        # Take top 20 rows
+        clean_df = missing_counts.head(20).copy()
+    
+        # Ensure Count is numeric
+        clean_df["Count"] = pd.to_numeric(clean_df["Count"], errors="coerce").fillna(0)
+    
+        # Ensure Control is string
+        clean_df["Control"] = clean_df["Control"].astype(str)
+    
         fig_demand = px.bar(
-            missing_counts.head(20),
+            clean_df,
             x="Control",
             y="Count",
             title="Top 20 Security Controls in Global Demand",
             text="Count",
+            color="Count",
         )
         fig_demand.update_traces(textposition="outside")
         fig_demand.update_layout(xaxis_tickangle=-40)
