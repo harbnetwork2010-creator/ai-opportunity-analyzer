@@ -1194,9 +1194,7 @@ with tabs[3]:
     total = reg_summary["Count"].sum() or 1
     reg_summary["Percentage"] = ((reg_summary["Count"] / total) * 100).round(1).astype(str) + "%"
 
-    st.subheader("🔎 Regulator Detection Summary")
-    st.dataframe(reg_summary)
-
+    
     # ============================================================
     # 2️⃣ SMART INTERPRETATION
     # ============================================================
