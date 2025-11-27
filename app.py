@@ -1173,170 +1173,151 @@ with tabs[3]:
 
     st.header("⚖ Regulatory View")
     st.subheader("🧠 Smart Regulatory Insights")
-    
-# ==============================
-# 🧠 Regulator Insights Section
-# ==============================
-        
-    # 1 — Summary Table
+
+    # ============================================================
+    # 1️⃣ REGULATOR SUMMARY (FIXED & SAFE)
+    # ============================================================
+    st.subheader("🔍 Regulator Detection Summary")
+
     reg_summary = (
-        df_processed.explode("Regulatory_Drivers")["Regulatory_Drivers"]
+        df_processed["Regulatory_Drivers"]
+        .explode()
+        .dropna()
         .value_counts()
         .reset_index()
         .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
     )
-    reg_summary["Percentage"] = (
-        (reg_summary["Count"] / reg_summary["Count"].sum()) * 100
-    ).round(1).astype(str) + "%"
-    
-    st.write("### 🔍 Regulator Detection Summary")
-    st.dataframe(reg_summary)
-    
-    # 2 — Automated Insight
-    unique_regs = df_processed["Regulatory_Drivers"].explode().unique()
-    st.write("### 🧠 Interpretation")
-    
-    if list(unique_regs) == ["General"]:
+
+    # Ensure numeric count
+    reg_summary["Count"] = pd.to_numeric(reg_summary["Count"], errors="coerce").fillna(0)
+
+    total = reg_summary["Count"].sum() or 1
+    reg_summary["Percentage"] = ((reg_summary["Count"] / total) * 100).round(1).astype(str) + "%"
+
+    st.dataframe(reg_summary, use_container_width=True)
+
+    # ============================================================
+    # 2️⃣ SMART INTERPRETATION
+    # ============================================================
+    st.subheader("🧠 Interpretation")
+
+    unique_regs = reg_summary["Regulator"].tolist()
+
+    if not unique_regs or unique_regs == ["General"]:
         st.info("""
-        **All detected regulators are 'General'.**
-    
+        **All detected regulators = 'General'**
+
         This means:
-        - No NCA cybersecurity terms were detected  
-        - No SAMA banking/financial terminology appeared  
+        - No NCA cybersecurity terms detected  
+        - No SAMA banking terminology detected  
         - No CMA investment/trading terminology found  
-        - Opportunities contain no regulator-specific keywords
-    
-        To improve accuracy:
-        Add more descriptive opportunity details mentioning:
-        - Compliance frameworks (NCA ECC, SAMA CSF)
-        - Banking/financial systems
-        - Capital market systems
+
+        To increase regulatory intelligence:
+        - Add clearer descriptions in Opportunity Name  
+        - Mention frameworks (NCA ECC, SAMA CSF, CMA)  
+        - Use domain-specific keywords in Solution Type  
         """)
     else:
         st.success(f"Detected regulators: {', '.join(unique_regs)}")
-    
-    # 3 — Keyword Coverage
-    st.write("### 📚 Regulatory Keyword Coverage")
-    keyword_coverage = (
-        df_processed["Regulatory_Drivers"].explode().value_counts().reset_index()
-        .rename(columns={"index": "Keyword", "Regulatory_Drivers": "Frequency"})
+
+    # ============================================================
+    # 3️⃣ KEYWORD COVERAGE TABLE
+    # ============================================================
+    st.subheader("📚 Regulatory Keyword Coverage")
+
+    keyword_coverage = reg_summary[["Regulator", "Count"]].rename(
+        columns={"Regulator": "Keyword", "Count": "Frequency"}
     )
-    st.dataframe(keyword_coverage)
-
-
+    st.dataframe(keyword_coverage, use_container_width=True)
 
     # ============================================================
-    # Create regulator dataframe safely
-    # ============================================================
-    try:
-        reg_series = (
-            df_processed["Regulatory_Drivers"]
-            .explode()
-            .dropna()
-        )
-
-        # If empty, handle gracefully
-        if reg_series.empty:
-            st.warning("No regulatory data found in your dataset.")
-            raise ValueError("reg_series empty")
-
-        # Frequency table
-        reg_share_df = (
-            reg_series.value_counts()
-            .reset_index()
-            .rename(columns={"index": "Regulator", "Regulatory_Drivers": "Count"})
-        )
-
-    except Exception as e:
-        reg_share_df = pd.DataFrame(columns=["Regulator", "Count"])
-        st.error(f"Could not prepare regulatory data: {e}")
-
-    # ============================================================
-    # 📊 PIE — Regulator Share Distribution
+    # 4️⃣ PIE CHART — Regulator Share Distribution
     # ============================================================
     st.subheader("📊 Regulator Share Distribution")
 
     try:
-        if reg_share_df.empty:
-            st.info("No regulatory drivers available to display.")
+        if reg_summary.empty:
+            st.info("No regulatory data available.")
         else:
             fig_pie = px.pie(
-                reg_share_df,
+                reg_summary,
                 names="Regulator",
                 values="Count",
-                title="Distribution of Regulatory Drivers"
+                title="Distribution of Regulatory Drivers",
+                hole=0.35
             )
+            fig_pie.update_traces(textposition="inside", textinfo="percent+label")
             st.plotly_chart(fig_pie, use_container_width=True)
-
     except Exception as e:
         st.error(f"Could not draw regulator share pie chart: {e}")
 
     # ============================================================
-    # 📈 BAR — Regulator Frequency
+    # 5️⃣ BAR CHART — Regulator Frequency
     # ============================================================
     st.subheader("📈 Regulatory Driver Frequency")
 
     try:
-        if reg_share_df.empty:
-            st.info("No regulatory drivers available to display.")
+        if reg_summary.empty:
+            st.info("No regulatory drivers available.")
         else:
             fig_bar = px.bar(
-                reg_share_df,
+                reg_summary,
                 x="Regulator",
                 y="Count",
                 text="Count",
-                title="Frequency of Regulatory Drivers"
+                title="Frequency of Regulatory Drivers",
+                color="Regulator",
             )
             fig_bar.update_traces(textposition="outside")
             fig_bar.update_layout(xaxis_tickangle=-40)
             st.plotly_chart(fig_bar, use_container_width=True)
-
     except Exception as e:
         st.error(f"Could not draw regulatory bar chart: {e}")
 
     # ============================================================
-    # 🔍 KEYWORDS — Most Frequent Regulatory Keywords
+    # 6️⃣ MOST FREQUENT REGULATORY KEYWORDS
     # ============================================================
     st.subheader("🔍 Most Frequent Regulatory Keywords")
 
     try:
-        kw_list = []
+        keyword_hits = []
 
         for _, row in df_processed.iterrows():
             text = (
-                str(row.get("Opportunity Name", "")) + " " +
-                str(row.get("Domain", "")) + " " +
+                str(row.get("Opportunity Name", "")).lower() + " " +
+                str(row.get("Domain", "")).lower() + " " +
                 str(row.get("Solution Type", "")).lower()
             )
 
-            for reg, kws in REGULATORY_KEYWORDS.items():
-                for kw in kws:
-                    if kw in text.lower():
-                        kw_list.append(kw)
+            for reg, kw_list in REGULATORY_KEYWORDS.items():
+                for kw in kw_list:
+                    if kw in text:
+                        keyword_hits.append(kw)
 
-        if not kw_list:
+        if not keyword_hits:
             st.info("No regulatory keywords detected in your dataset.")
+        else:
+            kw_df = (
+                pd.Series(keyword_hits)
+                .value_counts()
+                .reset_index()
+                .rename(columns={"index": "Keyword", 0: "Frequency"})
+            )
 
-        kw_df = (
-            pd.Series(kw_list)
-            .value_counts()
-            .reset_index()
-            .rename(columns={"index": "Keyword", 0: "Frequency"})
-        )
-
-        fig_kw = px.bar(
-            kw_df.head(15),
-            x="Keyword",
-            y="Frequency",
-            text="Frequency",
-            title="Most Common Regulatory Keywords"
-        )
-        fig_kw.update_traces(textposition="outside")
-        fig_kw.update_layout(xaxis_tickangle=-30)
-        st.plotly_chart(fig_kw, use_container_width=True)
+            fig_kw = px.bar(
+                kw_df.head(15),
+                x="Keyword",
+                y="Frequency",
+                text="Frequency",
+                title="Most Common Regulatory Keywords",
+                color="Frequency"
+            )
+            fig_kw.update_traces(textposition="outside")
+            fig_kw.update_layout(xaxis_tickangle=-30)
+            st.plotly_chart(fig_kw, use_container_width=True)
 
     except Exception as e:
-        st.error(f"Could not draw keyword cloud: {e}")
+        st.error(f"Could not draw keyword analysis: {e}")
 
 
 
