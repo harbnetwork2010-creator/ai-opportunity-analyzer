@@ -1174,6 +1174,26 @@ with tabs[3]:
     st.header("⚖ Regulatory View")
     st.subheader("🛠 Debug View (temporary)")
 
+try:
+    tmp = df_processed[["Regulatory_Drivers"]].copy()
+    tmp["Exploded"] = tmp["Regulatory_Drivers"].explode()
+
+    st.write("Raw Regulatory Data:", tmp)
+
+    reg_raw = tmp["Exploded"].dropna()
+    st.write("Exploded Values:", reg_raw)
+
+    reg_df_test = (
+        reg_raw.value_counts()
+        .reset_index()
+        .rename(columns={"index": "Regulator", "Exploded": "Count"})
+    )
+    st.write("Generated Regulatory DF:", reg_df_test)
+
+except Exception as e:
+    st.error(f"DEBUG ERROR: {e}")
+
+
     # ============================================================
     # Create regulator dataframe safely
     # ============================================================
