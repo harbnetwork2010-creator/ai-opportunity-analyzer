@@ -1,6 +1,5 @@
 import io
 from datetime import datetime
-
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -8,6 +7,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
+import plotly.graph_objects as go
 
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
@@ -17,6 +17,56 @@ from sklearn.impute import SimpleImputer
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+
+
+# PAGE CONFIGURATION – EXECUTIVE DARK THEME
+
+st.set_page_config(
+    page_title="AI-Driven Smart Business Opportunity Analyzer",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# GLOBAL PLOTLY THEME
+px.defaults.template = "plotly_dark"
+
+
+# GLOBAL NUMBER FORMATTER
+
+def fmt(x):
+    """Format numbers with commas and 2 decimals."""
+    try:
+        return f"{float(x):,.2f}"
+    except:
+        return x
+
+
+# IMPROVED BUSINESS-GAP CATEGORY EXTRACTOR
+
+def categorize_gap(reason):
+    if pd.isna(reason) or reason == "":
+        return "No Gap"
+
+    reason = reason.lower()
+
+    if "deadline" in reason:
+        return "Deadline Issues"
+    if "proposal" in reason:
+        return "Missing Proposal"
+    if "not updated" in reason:
+        return "Stale Opportunity"
+    if "deviation" in reason:
+        return "Value Mismatch"
+    if "high-value" in reason:
+        return "High-Value Risk"
+    return "Other"
+
+
+# EXPECTED COLUMNS + REGULATORY TAGGING
+
+EXPECTED_COLUMNS = [...]
+REGULATORY_KEYWORDS = {...}
+(KEEP YOUR ORIGINAL ITEMS – do not remove)
 
 
 
