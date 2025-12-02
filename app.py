@@ -1676,62 +1676,18 @@ with tab_forecast:
             st.markdown("---")
         
             # ============= BAR CHART =============
-            # ====== CATEGORY-LEVEL BAR CHART ======
-
-            # Map category indices to full names
-            CATEGORY_MAP = [
-                "Governance & Strategy",
-                "Risk Management",
-                "Identity & Access Management",
-                "Network Security",
-                "Endpoint & Server Security",
-                "Data Protection & Privacy",
-                "Security Monitoring & Analytics",
-                "Incident Response & Forensics",
-                "Business Continuity & DR",
-                "Awareness & Human Risk"
-            ]
+            # CATEGORY-LEVEL VIEW USING REQUIRED CONTROLS (REAL COLUMN)
             
-            # SAFELY detect actual column name
-            possible_cols = [
-                "Required_Control_Categories",
-                "Required_Control_Category",
-                "Required_Categories",
-                "Required Category",
-                "Required Controls",
-                "Required_Full_Controls"
-            ]
+            required_controls = row.get("Required_Controls", []) or []
+            implemented_controls = row.get("Implemented_Controls", []) or []
+            missing_controls = row.get("Missing_Controls", []) or []
             
-            raw_categories = None
-            for col in possible_cols:
-                if col in row:
-                    raw_categories = row[col]
-                    break
-            
-            if raw_categories is None:
-                st.error("❌ Required control categories column not found in dataset.")
-                st.stop()
-            
-            # Convert indexes → names
-            categories = [
-                CATEGORY_MAP[c] if isinstance(c, int) and c < len(CATEGORY_MAP) else str(c)
-                for c in raw_categories
-            ]
-            
-            # Build readiness maps
-            implemented_map = {
-                c: any(cn in c for cn in row["Implemented_Controls"])
-                for c in categories
-            }
-            missing_map = {
-                c: any(cn in c for cn in row["Missing_Controls"])
-                for c in categories
-            }
+            categories = required_controls  # Renaming for clarity
             
             bar_df = pd.DataFrame({
                 "Category": categories,
-                "Implemented": [1 if implemented_map[c] else 0 for c in categories],
-                "Missing": [1 if missing_map[c] else 0 for c in categories],
+                "Implemented": [1 if c in implemented_controls else 0 for c in categories],
+                "Missing": [1 if c in missing_controls else 0 for c in categories],
             })
             
             fig_bar = px.bar(
@@ -1739,13 +1695,12 @@ with tab_forecast:
                 x="Category",
                 y=["Implemented", "Missing"],
                 barmode="group",
-                title="Control Readiness by Category",
+                title="Control Readiness by Required Controls",
             )
             fig_bar.update_layout(xaxis_tickangle=-40)
             st.plotly_chart(fig_bar, use_container_width=True)
 
-        
-            # ============= BADGE LISTS =============
+                    # ============= BADGE LISTS =============
         
             st.markdown("### 🟦 Required Control Categories")
             for item in categories:
