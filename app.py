@@ -1378,8 +1378,8 @@ with tab_customers:
     st.subheader("Per-Customer Analytics & Explanations")
 
     if customer_kpis.empty:
-    st.warning("Customer KPIs were empty — auto-generated KPIs have been applied.")
-    customer_kpis = customer_kpis_fixed
+        st.warning("Customer KPIs were empty — auto-generated KPIs have been applied.")
+        customer_kpis = customer_kpis_fixed
     else:
         customer_kpis_sorted = customer_kpis.sort_values(
             by=["Pipeline_Expected_Revenue_SAR", "Historical_Revenue_SAR"],
