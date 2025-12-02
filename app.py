@@ -1692,7 +1692,25 @@ with tab_forecast:
                 "Awareness & Human Risk"
             ]
             
-            raw_categories = row["Required_Control_Categories"]
+            # SAFELY detect actual column name
+            possible_cols = [
+                "Required_Control_Categories",
+                "Required_Control_Category",
+                "Required_Categories",
+                "Required Category",
+                "Required Controls",
+                "Required_Full_Controls"
+            ]
+            
+            raw_categories = None
+            for col in possible_cols:
+                if col in row:
+                    raw_categories = row[col]
+                    break
+            
+            if raw_categories is None:
+                st.error("❌ Required control categories column not found in dataset.")
+                st.stop()
             
             # Convert indexes → names
             categories = [
