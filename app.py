@@ -1369,6 +1369,40 @@ with tab_opps:
         mime="text/csv",
     )
 
+# ---- FORCE REBUILD CUSTOMER KPIS IF ORIGINAL IS EMPTY ----
+
+def rebuild_customer_kpis(df):
+    if df.empty:
+        return pd.DataFrame()
+
+    grouped = df.groupby("Customer Name")
+
+    rows = []
+    for cust, grp in grouped:
+        won = (grp["Status_Simplified"] == "Won").sum()
+        lost = (grp["Status_Simplified"] == "Lost").sum()
+
+        hist_rev = grp.loc[grp["Status_Simplified"] == "Won", "Final Contract Value (SAR)"].sum()
+
+        pipeline = (
+            grp["Predicted_Final_Value"]
+            .fillna(grp["Expected Value (SAR)"])
+            .fillna(0)
+            .sum()
+        )
+
+        rows.append({
+            "Customer Name": cust,
+            "Win_Rate": won / (won + lost) if (won + lost) > 0 else 0,
+            "Historical_Revenue_SAR": hist_rev,
+            "Pipeline_Expected_Revenue_SAR": pipeline,
+            "Engagement_Score": pipeline / 10000,  # simple heuristic
+        })
+
+    return pd.DataFrame(rows)
+
+# Safe KPI reconstruction
+customer_kpis_fixed = rebuild_customer_kpis(df_pred)
 
 # =========================================================
 # TAB 3: CUSTOMER INSIGHTS
