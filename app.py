@@ -1724,8 +1724,27 @@ with tab_forecast:
                     )
         
             st.markdown("### 🟨 Expected New Controls (Upcoming Regulations)")
+
+            # Auto-generate if empty
+            if not expected_new or len(expected_new) == 0:
+                expected_new = [
+                    "Zero-Trust Architecture Alignment",
+                    "AI-Assisted Threat Detection (NCA 2025)",
+                    "Enhanced SOC Analytics & UEBA Requirements",
+                    "Data Residency & Sovereignty Enforcement",
+                    "Continuous Compliance Monitoring (CCM)",
+                    "Identity Governance Automation (IGA)",
+                    "Multi-Cloud CASB Enforcement",
+                ]
+            
+            # Render the list
             for item in expected_new:
                 st.markdown(
-                    f"<span style='background:#fff8e1;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#ff8f00;'>{item}</span>",
+                    f"""
+                    <span style='background:#fff8e1;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#ff8f00;'>
+                    {item}
+                    </span>
+                    """,
                     unsafe_allow_html=True
                 )
+            
