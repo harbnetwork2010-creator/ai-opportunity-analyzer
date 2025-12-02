@@ -1369,56 +1369,109 @@ with tab_opps:
         mime="text/csv",
     )
 
-# ---- FORCE REBUILD CUSTOMER KPIS IF ORIGINAL IS EMPTY ----
-
-def rebuild_customer_kpis(df):
-    if df.empty:
-        return pd.DataFrame()
-
-    grouped = df.groupby("Customer Name")
-
-    rows = []
-    for cust, grp in grouped:
-        won = (grp["Status_Simplified"] == "Won").sum()
-        lost = (grp["Status_Simplified"] == "Lost").sum()
-
-        hist_rev = grp.loc[grp["Status_Simplified"] == "Won", "Final Contract Value (SAR)"].sum()
-
-        pipeline = (
-            grp["Predicted_Final_Value"]
-            .fillna(grp["Expected Value (SAR)"])
-            .fillna(0)
-            .sum()
-        )
-
-        rows.append({
-            "Customer Name": cust,
-            "Win_Rate": won / (won + lost) if (won + lost) > 0 else 0,
-            "Historical_Revenue_SAR": hist_rev,
-            "Pipeline_Expected_Revenue_SAR": pipeline,
-            "Engagement_Score": pipeline / 10000,  # simple heuristic
-        })
-
-    return pd.DataFrame(rows)
-
-# Safe KPI reconstruction
-customer_kpis_fixed = rebuild_customer_kpis(df_pred)
 
 # =========================================================
 # TAB 3: CUSTOMER INSIGHTS
 # =========================================================
 
 with tab_customers:
-    st.subheader("Per-Customer Analytics & Explanations")
+    st.markdown("### 🔍 Detailed Customer Insights")
 
-    if customer_kpis.empty:
-        st.warning("Customer KPIs were empty — auto-generated KPIs have been applied.")
-        customer_kpis = customer_kpis_fixed
+    # Always available list of customers
+    cust_names = sorted(df_pred["Customer Name"].dropna().unique().tolist())
+    selected_customer = st.selectbox("Select a customer", options=cust_names)
+    
+    # Filter dataset for selected customer
+    cust_df = df_pred[df_pred["Customer Name"] == selected_customer]
+    
+    # Basic counts
+    won_df = cust_df[cust_df["Status_Simplified"] == "Won"]
+    lost_df = cust_df[cust_df["Status_Simplified"] == "Lost"]
+    inprog_df = cust_df[cust_df["Status_Simplified"] == "In Progress"]
+    
+    # 1️⃣ KPI Cards
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Opportunities", len(cust_df))
+    c2.metric("Won", len(won_df))
+    c3.metric("Lost", len(lost_df))
+    c4.metric("In Progress", len(inprog_df))
+    
+    st.markdown("---")
+    
+    # 2️⃣ Customer Opportunity Table
+    st.markdown("### 📄 All Opportunities for This Customer")
+    
+    show_cols = [
+        "Opportunity ID", "Opportunity Name", "Opportunity Stage",
+        "Status_Simplified", "Expected Value (SAR)", "Final Contract Value (SAR)",
+        "Predicted_Final_Value", "Predicted_Status",
+        "Predicted_Win_Prob", "Gap_Flag", "Gap_Category", "Gap_Reason"
+    ]
+    
+    show_cols = [c for c in show_cols if c in cust_df.columns]
+    
+    st.dataframe(
+        format_currency_columns(
+            cust_df[show_cols],
+            ["Expected Value (SAR)", "Final Contract Value (SAR)", "Predicted_Final_Value"]
+        ),
+        use_container_width=True
+    )
+    
+    st.markdown("---")
+    
+    # 3️⃣ Win/Loss Breakdown (Chart)
+    st.markdown("### 📊 Win / Loss Breakdown")
+    
+    win_loss_df = pd.DataFrame({
+        "Status": ["Won", "Lost", "In Progress"],
+        "Count": [len(won_df), len(lost_df), len(inprog_df)]
+    })
+    
+    fig_wl = px.bar(
+        win_loss_df,
+        x="Status",
+        y="Count",
+        text="Count",
+        title=f"Win/Loss Summary – {selected_customer}"
+    )
+    fig_wl.update_traces(textposition="outside")
+    st.plotly_chart(fig_wl, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # 4️⃣ AI Insights (Simple But Powerful)
+    st.markdown("### 🤖 AI-Generated Insights")
+    
+    insights = []
+    
+    # Win rate insight
+    total_closed = len(won_df) + len(lost_df)
+    if total_closed > 0:
+        win_rate = len(won_df) / total_closed
+        if win_rate > 0.7:
+            insights.append("Strong win rate — relationship is excellent.")
+        elif win_rate < 0.4:
+            insights.append("Low win rate — review pricing, qualification, or competitor positioning.")
+        else:
+            insights.append("Moderate win rate — room for improvement.")
     else:
-        customer_kpis_sorted = customer_kpis.sort_values(
-            by=["Pipeline_Expected_Revenue_SAR", "Historical_Revenue_SAR"],
-            ascending=False,
-        )
+        insights.append("No closed deals yet — focus on progressing active opportunities.")
+    
+    # Engagement / recency
+    if cust_df["days_since_last_update"].min() > 30:
+        insights.append("Customer aging: No updates in 30+ days — engagement declining.")
+    
+    # High value pipeline
+    if inprog_df["Expected Value (SAR)"].sum() > won_df["Final Contract Value (SAR)"].sum():
+        insights.append("High-value pipeline — prioritize ongoing opportunities.")
+    
+    # If no insights generated
+    if len(insights) == 0:
+        st.info("Customer performance is stable — no major insights to highlight.")
+    else:
+        for i in insights:
+            st.write(f"- {i}")
 
         st.subheader("Top Customers by Expected Pipeline Revenue")
         cust_display = customer_kpis_sorted[
