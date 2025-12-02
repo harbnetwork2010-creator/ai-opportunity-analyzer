@@ -178,41 +178,29 @@ def parse_date(series):
 
 def map_status(status):
     if pd.isna(status):
-        return np.nan
+        return "In Progress"
+
     s = str(status).strip().lower()
 
-    # --- WON patterns ---
+    # --- WON Variants ---
     won_keywords = [
-        "won",
-        "success",
-        "closed won",
-        "awarded",
-        "confirmed",
-        "finalized",
-        "approved",
-        "completed successfully"
+        "won", "success", "closed won", "awarded", "finalized", "signed",
+        "contract signed", "approved", "po received", "deal won"
     ]
     if any(k in s for k in won_keywords):
         return "Won"
 
-    # --- LOST patterns ---
+    # --- LOST Variants ---
     lost_keywords = [
-        "lost",
-        "closed lost",
-        "cancelled",
-        "canceled",
-        "rejected",
-        "failed",
-        "not awarded",
-        "dropped",
-        "declined"
+        "lost", "closed lost", "cancel", "canceled", "cancelled",
+        "rejected", "failed", "not awarded", "dropped", "declined",
+        "no go", "closed no deal", "disqualified"
     ]
     if any(k in s for k in lost_keywords):
         return "Lost"
 
-    # --- Otherwise still open ---
+    # Everything else = still active
     return "In Progress"
-
 
 
 def tag_regulatory_drivers(row):
