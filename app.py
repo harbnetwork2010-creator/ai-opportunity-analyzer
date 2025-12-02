@@ -1375,7 +1375,6 @@ with tab_opps:
 # =========================================================
 
 with tab_customers:
-    st.subheader("Top Customers by Expected Pipeline Revenue")
     st.markdown("### 🔍 Detailed Customer Insights")
 
     # Always available list of customers
