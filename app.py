@@ -1377,97 +1377,119 @@ with tab_opps:
 with tab_customers:
     st.subheader("Per-Customer Analytics & Explanations")
 
-    if customer_kpis.empty:
-        st.info("Customer KPIs could not be computed.")
-    else:
-        customer_kpis_sorted = customer_kpis.sort_values(
-            by=["Pipeline_Expected_Revenue_SAR", "Historical_Revenue_SAR"],
-            ascending=False,
-        )
+    # -------------------------------------------------------
+    # 1. AUTO-DETECT CUSTOMER COLUMN
+    # -------------------------------------------------------
+    possible_customer_cols = [
+        "Customer Name", "Customer", "Client Name",
+        "Client", "Account", "Account Name"
+    ]
+    
+    customer_col = None
+    for col in possible_customer_cols:
+        if col in df_pred.columns:
+            customer_col = col
+            break
 
-        st.subheader("Top Customers by Expected Pipeline Revenue")
-        cust_display = customer_kpis_sorted[
-            [
-                "Customer Name",
-                "Win_Rate",
-                "Historical_Revenue_SAR",
-                "Pipeline_Expected_Revenue_SAR",
-                "Engagement_Score",
-            ]
-        ].copy()
-        cust_display = format_currency_columns(
-            cust_display,
-            ["Historical_Revenue_SAR", "Pipeline_Expected_Revenue_SAR"],
-        )
-        st.dataframe(cust_display.head(20))
+    if customer_col is None:
+        st.error("❌ No customer column found in uploaded file. Expected one of: " + str(possible_customer_cols))
+        st.stop()
 
-        st.markdown("---")
+    # -------------------------------------------------------
+    # 2. BUILD CUSTOMER KPIS SAFELY (NO EMPTY RESULT)
+    # -------------------------------------------------------
+    def safe_build_customer_kpis(df):
+        if df.empty:
+            return pd.DataFrame()
 
-        # Scatter plot: Engagement vs Historical Revenue
-        st.markdown("### Engagement vs Historical Revenue")
-        fig_eng = px.scatter(
-            customer_kpis_sorted,
-            x="Engagement_Score",
-            y="Historical_Revenue_SAR",
-            hover_data=["Customer Name"],
-            labels={
-                "Engagement_Score": "Engagement score",
-                "Historical_Revenue_SAR": "Historical revenue (SAR)",
-            },
-        )
-        st.plotly_chart(fig_eng, use_container_width=True)
+        grouped = df.groupby(customer_col)
 
-        st.markdown("---")
-
-        cust_names = sorted(customer_kpis["Customer Name"].unique().tolist())
-        selected_customer = st.selectbox("Select a customer", options=cust_names)
-
-        cust_summary = explain_customer_win_loss(selected_customer, df_pred)
-        if cust_summary:
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                st.metric("Total Opps", cust_summary["total_opportunities"])
-            with c2:
-                st.metric("Won", cust_summary["won_count"])
-            with c3:
-                st.metric("Lost", cust_summary["lost_count"])
-            with c4:
-                st.metric(
-                    "Win Rate",
-                    f"{cust_summary['win_rate']*100:.1f}%"
-                    if cust_summary["win_rate"] == cust_summary["win_rate"]
-                    else "N/A",
-                )
-
-            st.markdown("**Insights:**")
-            for ins in cust_summary["insights"]:
-                st.write(f"- {ins}")
-
-            st.markdown("**This customer's opportunities:**")
-            cust_opps = df_pred[df_pred["Customer Name"] == selected_customer][
-                [
-                    "Opportunity ID",
-                    "Opportunity Name",
-                    "Opportunity Stage",
-                    "Status_Simplified",
-                    "Predicted_Status",
-                    "Predicted_Win_Prob",
-                    "Expected Value (SAR)",
-                    "Final Contract Value (SAR)",
-                    "Predicted_Final_Value",
-                    "Primary_Regulatory_Driver",
-                    "Regulator",
-                    "Sector",
-                    "Gap_Flag",
-                    "Gap_Category",
-                    "Gap_Reason",
-                ]
-            ]
-            cust_opps_display = format_currency_columns(
-                cust_opps,
-                ["Expected Value (SAR)", "Final Contract Value (SAR)", "Predicted_Final_Value"],
+        records = []
+        for cust, grp in grouped:
+            won_count = (grp["Status_Simplified"] == "Won").sum()
+            lost_count = (grp["Status_Simplified"] == "Lost").sum()
+            total_revenue = grp.loc[grp["Status_Simplified"] == "Won", "Final Contract Value (SAR)"].sum()
+            pipeline_exp = (
+                grp["Predicted_Final_Value"]
+                .fillna(grp["Expected Value (SAR)"])
+                .fillna(0)
+                .sum()
             )
-            st.dataframe(cust_opps_display)
+
+            records.append({
+                "Customer Name": cust,
+                "Win_Rate": won_count / (won_count + lost_count) if (won_count + lost_count) > 0 else 0,
+                "Historical_Revenue_SAR": total_revenue,
+                "Pipeline_Expected_Revenue_SAR": pipeline_exp,
+            })
+
+        return pd.DataFrame(records)
+
+    customer_kpis_fixed = safe_build_customer_kpis(df_pred)
+
+    if customer_kpis_fixed.empty:
+        st.warning("No customer KPI data available — check your dataset.")
+        st.stop()
+
+    # -------------------------------------------------------
+    # 3. SHOW TOP CUSTOMERS
+    # -------------------------------------------------------
+    st.subheader("Top Customers by Expected Pipeline Revenue")
+
+    top_customers = customer_kpis_fixed.sort_values(
+        by="Pipeline_Expected_Revenue_SAR", ascending=False
+    )
+
+    st.dataframe(top_customers.head(20))
+
+    st.markdown("---")
+
+    # -------------------------------------------------------
+    # 4. SELECT CUSTOMER FOR DETAILS
+    # -------------------------------------------------------
+    selected_customer = st.selectbox(
+        "Select a customer",
+        top_customers["Customer Name"].tolist()
+    )
+
+    cust_rows = df_pred[df_pred[customer_col] == selected_customer]
+
+    st.subheader(f"Detailed Insights for {selected_customer}")
+
+    # KPI CARDS
+    wins = (cust_rows["Status_Simplified"] == "Won").sum()
+    losses = (cust_rows["Status_Simplified"] == "Lost").sum()
+    total = len(cust_rows)
+    win_rate = wins / total if total > 0 else 0
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Opportunities", total)
+    c2.metric("Won", wins)
+    c3.metric("Lost", losses)
+    c4.metric("Win Rate", f"{win_rate*100:.1f}%")
+
+    st.markdown("---")
+
+    # -------------------------------------------------------
+    # 5. SHOW CUSTOMER'S OPPORTUNITIES
+    # -------------------------------------------------------
+    st.markdown("### Opportunities for this customer")
+
+    cols_to_show = [
+        "Opportunity ID", "Opportunity Name", "Opportunity Stage",
+        "Status_Simplified", "Expected Value (SAR)", "Final Contract Value (SAR)",
+        "Predicted_Final_Value", "Predicted_Win_Prob",
+        "Regulator", "Sector", "Gap_Flag", "Gap_Category"
+    ]
+
+    cols_to_show = [c for c in cols_to_show if c in cust_rows.columns]
+
+    st.dataframe(
+        cust_rows[cols_to_show].sort_values(
+            by="Predicted_Win_Prob", ascending=False
+        )
+    )
+
 
 
 # =========================================================
