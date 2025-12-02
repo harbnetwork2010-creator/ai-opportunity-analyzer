@@ -1473,59 +1473,59 @@ with tab_customers:
         for i in insights:
             st.write(f"- {i}")
 
-       st.subheader("Top Customers by Expected Pipeline Revenue")
+   st.subheader("Top Customers by Expected Pipeline Revenue")
 
-        # Fallback if customer_kpis does not exist or is empty
-        if "customer_kpis" not in locals() or customer_kpis.empty:
-            
-            # Create a simple ranking from df_pred instead
-            fallback_df = (
-                df_pred.groupby("Customer Name")
-                ["Expected Value (SAR)"]
-                .sum()
-                .reset_index()
-                .rename(columns={"Expected Value (SAR)": "Pipeline_Expected_Revenue_SAR"})
-            )
+    # Fallback if customer_kpis does not exist or is empty
+    if "customer_kpis" not in locals() or customer_kpis.empty:
         
-            fallback_df = fallback_df.sort_values(
-                by="Pipeline_Expected_Revenue_SAR", ascending=False
-            )
-        
-            st.warning("Customer KPIs were not available — showing revenue-based ranking instead.")
-        
-            st.dataframe(
-                format_currency_columns(
-                    fallback_df.head(20),
-                    ["Pipeline_Expected_Revenue_SAR"]
-                ),
-                use_container_width=True
-            )
-        
-        else:
-            # Original behavior if customer_kpis is valid
-            customer_kpis_sorted = customer_kpis.sort_values(
-                by=["Pipeline_Expected_Revenue_SAR", "Historical_Revenue_SAR"],
-                ascending=False,
-            )
-        
-            cust_display = customer_kpis_sorted[
-                [
-                    "Customer Name",
-                    "Win_Rate",
-                    "Historical_Revenue_SAR",
-                    "Pipeline_Expected_Revenue_SAR",
-                    "Engagement_Score",
-                ]
-            ].copy()
-        
-            cust_display = format_currency_columns(
-                cust_display,
-                ["Historical_Revenue_SAR", "Pipeline_Expected_Revenue_SAR"],
-            )
-        
-            st.dataframe(cust_display.head(20), use_container_width=True)
-        
-        st.markdown("---")
+        # Create a simple ranking from df_pred instead
+        fallback_df = (
+            df_pred.groupby("Customer Name")
+            ["Expected Value (SAR)"]
+            .sum()
+            .reset_index()
+            .rename(columns={"Expected Value (SAR)": "Pipeline_Expected_Revenue_SAR"})
+        )
+    
+        fallback_df = fallback_df.sort_values(
+            by="Pipeline_Expected_Revenue_SAR", ascending=False
+        )
+    
+        st.warning("Customer KPIs were not available — showing revenue-based ranking instead.")
+    
+        st.dataframe(
+            format_currency_columns(
+                fallback_df.head(20),
+                ["Pipeline_Expected_Revenue_SAR"]
+            ),
+            use_container_width=True
+        )
+    
+    else:
+        # Original behavior if customer_kpis is valid
+        customer_kpis_sorted = customer_kpis.sort_values(
+            by=["Pipeline_Expected_Revenue_SAR", "Historical_Revenue_SAR"],
+            ascending=False,
+        )
+    
+        cust_display = customer_kpis_sorted[
+            [
+                "Customer Name",
+                "Win_Rate",
+                "Historical_Revenue_SAR",
+                "Pipeline_Expected_Revenue_SAR",
+                "Engagement_Score",
+            ]
+        ].copy()
+    
+        cust_display = format_currency_columns(
+            cust_display,
+            ["Historical_Revenue_SAR", "Pipeline_Expected_Revenue_SAR"],
+        )
+    
+        st.dataframe(cust_display.head(20), use_container_width=True)
+    
+    st.markdown("---")
 
 
         # Scatter plot: Engagement vs Historical Revenue
