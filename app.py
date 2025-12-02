@@ -1527,7 +1527,7 @@ with tab_customers:
 
 
         # Scatter plot: Engagement vs Historical Revenue
-        st.markdown("### Engagement vs Historical Revenue")
+        st.markdown ("### Engagement vs Historical Revenue")
         fig_eng = px.scatter(
             customer_kpis_sorted,
             x="Engagement_Score",
