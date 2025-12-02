@@ -1619,123 +1619,123 @@ with tab_forecast:
         )
         st.subheader("🔍 Detailed Regulatory View per Customer")
     
-    selected_customer = st.selectbox(
-        "Select Customer",
-        regulatory_forecast["Customer Name"].unique(),
-        key="reg_customer"
-    )
-    
-    if selected_customer:
-    
-        row = regulatory_forecast[
-            regulatory_forecast["Customer Name"] == selected_customer
-        ].iloc[0]
-    
-        # ====== TOP KPI CARDS ======
-        kpi1, kpi2, kpi3 = st.columns(3)
-    
-        kpi1.metric("Sector", row["Sector"])
-        kpi2.metric("Regulator", row["Regulator"])
-        kpi3.metric(
-            "Expected New Spend (SAR)",
-            fmt_number(row["Expected_Spend_SAR"])
+        selected_customer = st.selectbox(
+            "Select Customer",
+            regulatory_forecast["Customer Name"].unique(),
+            key="reg_customer"
         )
-    
-        st.markdown("---")
-    
-        # ====== DONUT CHART: Implemented vs Missing ======
-        implemented_count = len(row["Implemented_Controls"])
-        missing_count = len(row["Missing_Controls"])
-        total_required = implemented_count + missing_count
-    
-        donut_df = pd.DataFrame({
-            "Status": ["Implemented", "Missing"],
-            "Count": [implemented_count, missing_count]
-        })
-    
-        fig_donut = px.pie(
-            donut_df,
-            values="Count",
-            names="Status",
-            hole=0.55,
-            color="Status",
-            color_discrete_map={
-                "Implemented": "#2ca02c",
-                "Missing": "#d62728"
-            },
-            title="Overall Compliance Readiness"
-        )
-        fig_donut.update_layout(showlegend=True)
-        st.plotly_chart(fig_donut, use_container_width=True)
-    
-        st.markdown("---")
-    
-        # ====== CATEGORY-LEVEL BAR CHART ======
-        categories = row["Required_Control_Categories"]
-    
-        implemented_map = {
-            c: any(cn in c for cn in row["Implemented_Controls"])
-            for c in categories
-        }
-        missing_map = {
-            c: any(cn in c for cn in row["Missing_Controls"])
-            for c in categories
-        }
-    
-        bar_df = pd.DataFrame({
-            "Category": categories,
-            "Implemented": [1 if implemented_map[c] else 0 for c in categories],
-            "Missing": [1 if missing_map[c] else 0 for c in categories],
-        })
-    
-        fig_bar = px.bar(
-            bar_df,
-            x="Category",
-            y=["Implemented", "Missing"],
-            barmode="group",
-            title="Control Readiness by Category",
-        )
-        fig_bar.update_layout(xaxis_tickangle=-40)
-        st.plotly_chart(fig_bar, use_container_width=True)
-    
-        st.markdown("---")
-    
-        # ====== BADGE-STYLE LISTS ======
-    
-        st.markdown("### 🟦 Required Control Categories")
-        for item in row["Required_Control_Categories"]:
-            st.markdown(f"""
-                <span style='background:#e8f0fe;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#174ea6;'>
-                {item}
-                </span>
-            """, unsafe_allow_html=True)
-    
-        st.markdown("### 🟩 Implemented Controls")
-        if len(row["Implemented_Controls"]) == 0:
-            st.info("No implemented controls detected.")
-        else:
-            for item in row["Implemented_Controls"]:
+        
+        if selected_customer:
+        
+            row = regulatory_forecast[
+                regulatory_forecast["Customer Name"] == selected_customer
+            ].iloc[0]
+        
+            # ====== TOP KPI CARDS ======
+            kpi1, kpi2, kpi3 = st.columns(3)
+        
+            kpi1.metric("Sector", row["Sector"])
+            kpi2.metric("Regulator", row["Regulator"])
+            kpi3.metric(
+                "Expected New Spend (SAR)",
+                fmt_number(row["Expected_Spend_SAR"])
+            )
+        
+            st.markdown("---")
+        
+            # ====== DONUT CHART: Implemented vs Missing ======
+            implemented_count = len(row["Implemented_Controls"])
+            missing_count = len(row["Missing_Controls"])
+            total_required = implemented_count + missing_count
+        
+            donut_df = pd.DataFrame({
+                "Status": ["Implemented", "Missing"],
+                "Count": [implemented_count, missing_count]
+            })
+        
+            fig_donut = px.pie(
+                donut_df,
+                values="Count",
+                names="Status",
+                hole=0.55,
+                color="Status",
+                color_discrete_map={
+                    "Implemented": "#2ca02c",
+                    "Missing": "#d62728"
+                },
+                title="Overall Compliance Readiness"
+            )
+            fig_donut.update_layout(showlegend=True)
+            st.plotly_chart(fig_donut, use_container_width=True)
+        
+            st.markdown("---")
+        
+            # ====== CATEGORY-LEVEL BAR CHART ======
+            categories = row["Required_Control_Categories"]
+        
+            implemented_map = {
+                c: any(cn in c for cn in row["Implemented_Controls"])
+                for c in categories
+            }
+            missing_map = {
+                c: any(cn in c for cn in row["Missing_Controls"])
+                for c in categories
+            }
+        
+            bar_df = pd.DataFrame({
+                "Category": categories,
+                "Implemented": [1 if implemented_map[c] else 0 for c in categories],
+                "Missing": [1 if missing_map[c] else 0 for c in categories],
+            })
+        
+            fig_bar = px.bar(
+                bar_df,
+                x="Category",
+                y=["Implemented", "Missing"],
+                barmode="group",
+                title="Control Readiness by Category",
+            )
+            fig_bar.update_layout(xaxis_tickangle=-40)
+            st.plotly_chart(fig_bar, use_container_width=True)
+        
+            st.markdown("---")
+        
+            # ====== BADGE-STYLE LISTS ======
+        
+            st.markdown("### 🟦 Required Control Categories")
+            for item in row["Required_Control_Categories"]:
                 st.markdown(f"""
-                    <span style='background:#e8f5e9;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#2e7d32;'>
+                    <span style='background:#e8f0fe;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#174ea6;'>
                     {item}
                     </span>
                 """, unsafe_allow_html=True)
-    
-        st.markdown("### 🟥 Missing Controls (High-Demand)")
-        if len(row["Missing_Controls"]) == 0:
-            st.success("No missing controls. Customer is fully compliant.")
-        else:
-            for item in row["Missing_Controls"]:
+        
+            st.markdown("### 🟩 Implemented Controls")
+            if len(row["Implemented_Controls"]) == 0:
+                st.info("No implemented controls detected.")
+            else:
+                for item in row["Implemented_Controls"]:
+                    st.markdown(f"""
+                        <span style='background:#e8f5e9;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#2e7d32;'>
+                        {item}
+                        </span>
+                    """, unsafe_allow_html=True)
+        
+            st.markdown("### 🟥 Missing Controls (High-Demand)")
+            if len(row["Missing_Controls"]) == 0:
+                st.success("No missing controls. Customer is fully compliant.")
+            else:
+                for item in row["Missing_Controls"]:
+                    st.markdown(f"""
+                        <span style='background:#ffebee;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#c62828;'>
+                        {item}
+                        </span>
+                    """, unsafe_allow_html=True)
+        
+            st.markdown("### 🟨 Expected New Controls (Upcoming Regulations)")
+            for item in row["Expected_New_Controls"]:
                 st.markdown(f"""
-                    <span style='background:#ffebee;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#c62828;'>
+                    <span style='background:#fff8e1;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#ff8f00;'>
                     {item}
                     </span>
                 """, unsafe_allow_html=True)
-    
-        st.markdown("### 🟨 Expected New Controls (Upcoming Regulations)")
-        for item in row["Expected_New_Controls"]:
-            st.markdown(f"""
-                <span style='background:#fff8e1;padding:6px 12px;border-radius:6px;margin:3px;display:inline-block;color:#ff8f00;'>
-                {item}
-                </span>
-            """, unsafe_allow_html=True)
