@@ -180,12 +180,22 @@ def map_status(status):
     if pd.isna(status):
         return np.nan
     s = str(status).strip().lower()
-    if "won" in s or "success" in s:
+
+    # --- WON patterns ---
+    won_keywords = ["won", "success", "closed won", "awarded", "confirmed", "finalized"]
+    if any(k in s for k in won_keywords):
         return "Won"
-    elif "lost" in s or "closed lost" in s or "cancel" in s:
+
+    # --- LOST patterns ---
+    lost_keywords = [
+        "lost", "closed lost", "cancelled", "canceled",
+        "rejected", "failed", "not awarded", "dropped"
+    ]
+    if any(k in s for k in lost_keywords):
         return "Lost"
-    else:
-        return "In Progress"
+
+    # Everything else still active
+    return "In Progress"
 
 
 def tag_regulatory_drivers(row):
