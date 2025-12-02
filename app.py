@@ -1676,23 +1676,56 @@ with tab_forecast:
             st.markdown("---")
         
             # ============= BAR CHART =============
+            # ====== CATEGORY-LEVEL BAR CHART ======
+
+            # Map category indices to full names
+            CATEGORY_MAP = [
+                "Governance & Strategy",
+                "Risk Management",
+                "Identity & Access Management",
+                "Network Security",
+                "Endpoint & Server Security",
+                "Data Protection & Privacy",
+                "Security Monitoring & Analytics",
+                "Incident Response & Forensics",
+                "Business Continuity & DR",
+                "Awareness & Human Risk"
+            ]
+            
+            raw_categories = row["Required_Control_Categories"]
+            
+            # Convert indexes → names
+            categories = [
+                CATEGORY_MAP[c] if isinstance(c, int) and c < len(CATEGORY_MAP) else str(c)
+                for c in raw_categories
+            ]
+            
+            # Build readiness maps
+            implemented_map = {
+                c: any(cn in c for cn in row["Implemented_Controls"])
+                for c in categories
+            }
+            missing_map = {
+                c: any(cn in c for cn in row["Missing_Controls"])
+                for c in categories
+            }
+            
             bar_df = pd.DataFrame({
                 "Category": categories,
-                "Implemented": [1 if any(imp in c for imp in implemented) else 0 for c in categories],
-                "Missing": [1 if any(ms in c for ms in missing) else 0 for c in categories],
+                "Implemented": [1 if implemented_map[c] else 0 for c in categories],
+                "Missing": [1 if missing_map[c] else 0 for c in categories],
             })
-        
+            
             fig_bar = px.bar(
                 bar_df,
                 x="Category",
                 y=["Implemented", "Missing"],
                 barmode="group",
-                title="Control Readiness by Category"
+                title="Control Readiness by Category",
             )
             fig_bar.update_layout(xaxis_tickangle=-40)
             st.plotly_chart(fig_bar, use_container_width=True)
-        
-            st.markdown("---")
+
         
             # ============= BADGE LISTS =============
         
