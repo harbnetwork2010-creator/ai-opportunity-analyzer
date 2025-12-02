@@ -1379,7 +1379,7 @@ with tab_customers:
 
     # Always available list of customers
     cust_names = sorted(df_pred["Customer Name"].dropna().unique().tolist())
-    selected_customer = st.selectbox("Select a customer", options=cust_names)
+    selected_customer = st.selectbox("Select a customer", options=cust_names, key="customer_insights_selector")
     
     # Filter dataset for selected customer
     cust_df = df_pred[df_pred["Customer Name"] == selected_customer]
@@ -1545,7 +1545,7 @@ with tab_customers:
         st.markdown("---")
 
         cust_names = sorted(customer_kpis["Customer Name"].unique().tolist())
-        selected_customer = st.selectbox("Select a customer", options=cust_names)
+        selected_customer = st.selectbox("Select a customer", options=cust_names, key="customer_insights_selector")
 
         cust_summary = explain_customer_win_loss(selected_customer, df_pred)
         if cust_summary:
