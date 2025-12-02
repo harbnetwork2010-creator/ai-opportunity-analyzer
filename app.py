@@ -1473,7 +1473,7 @@ with tab_customers:
         for i in insights:
             st.write(f"- {i}")
 
-       st.subheader("Top Customers by Expected Pipeline Revenue")
+   st.subheader("Top Customers by Expected Pipeline Revenue")
 
     # Fallback if customer_kpis does not exist or is empty
     if "customer_kpis" not in locals() or customer_kpis.empty:
