@@ -1375,6 +1375,7 @@ with tab_opps:
 # =========================================================
 
 with tab_customers:
+    st.subheader("Top Customers by Expected Pipeline Revenue")
     st.markdown("### 🔍 Detailed Customer Insights")
 
     # Always available list of customers
@@ -1473,9 +1474,7 @@ with tab_customers:
         for i in insights:
             st.write(f"- {i}")
 
-   st.subheader("Top Customers by Expected Pipeline Revenue")
-
-    # Fallback if customer_kpis does not exist or is empty
+       # Fallback if customer_kpis does not exist or is empty
     if "customer_kpis" not in locals() or customer_kpis.empty:
         
         # Create a simple ranking from df_pred instead
