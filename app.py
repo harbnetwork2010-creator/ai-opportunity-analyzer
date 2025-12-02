@@ -1379,7 +1379,7 @@ with tab_customers:
 
     # Always available list of customers
     cust_names = sorted(df_pred["Customer Name"].dropna().unique().tolist())
-    selected_customer = st.selectbox("Select a customer", options=cust_names, key="customer_insights_selector")
+    selected_customer = st.selectbox("Select a customer", options=cust_names, key="customer_insight_selector")
     
     # Filter dataset for selected customer
     cust_df = df_pred[df_pred["Customer Name"] == selected_customer]
