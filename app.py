@@ -182,20 +182,37 @@ def map_status(status):
     s = str(status).strip().lower()
 
     # --- WON patterns ---
-    won_keywords = ["won", "success", "closed won", "awarded", "confirmed", "finalized"]
+    won_keywords = [
+        "won",
+        "success",
+        "closed won",
+        "awarded",
+        "confirmed",
+        "finalized",
+        "approved",
+        "completed successfully"
+    ]
     if any(k in s for k in won_keywords):
         return "Won"
 
     # --- LOST patterns ---
     lost_keywords = [
-        "lost", "closed lost", "cancelled", "canceled",
-        "rejected", "failed", "not awarded", "dropped"
+        "lost",
+        "closed lost",
+        "cancelled",
+        "canceled",
+        "rejected",
+        "failed",
+        "not awarded",
+        "dropped",
+        "declined"
     ]
     if any(k in s for k in lost_keywords):
         return "Lost"
 
-    # Everything else still active
+    # --- Otherwise still open ---
     return "In Progress"
+
 
 
 def tag_regulatory_drivers(row):
